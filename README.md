@@ -86,11 +86,19 @@ contain a link.
 ## Development
 
 ```bash
+docker compose up -d               # a Postgres just for this repository
 bundle install
 bundle exec rake test_app          # generates spec/decidim_dummy_app
 bundle exec rspec
 bundle exec rake development_app   # a real app to click through
 ```
+
+The suite needs no configuration and no other application's database.
+`docker-compose.yml` runs Postgres on **5433**, so it coexists with one already
+listening on 5432, and `spec/database_defaults.rb` points the generated app at
+it. Every value defers to the environment, so `DATABASE_HOST`, `DATABASE_PORT`,
+`DATABASE_USERNAME` and `DATABASE_PASSWORD` still win if you would rather use
+your own Postgres — which is what CI does.
 
 System specs need Chrome and chromedriver. `selenium-webdriver` bundles
 Selenium Manager, so both can be fetched without root and without touching the

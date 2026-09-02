@@ -1,0 +1,25 @@
+# A database just for this module's test suite, so it does not depend on any
+# host application's stack. Port 5433 keeps it out of the way of a Postgres
+# already listening on the default 5432.
+#
+#   docker compose up -d
+#   bundle exec rake test_app
+#   bundle exec rspec
+services:
+  pg:
+    image: postgres:14-alpine
+    environment:
+      POSTGRES_USER: decidim
+      POSTGRES_PASSWORD: decidim
+    ports:
+      - "5433:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U decidim"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pg-data:

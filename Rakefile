@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require_relative "spec/database_defaults"
 require "decidim/dev/common_rake"
 
 desc "Generates a dummy app for testing"
