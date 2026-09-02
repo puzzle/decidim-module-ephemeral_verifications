@@ -12,7 +12,8 @@ concurrency:
 
 env:
   RUBY_VERSION: 3.3.4
-  NODE_VERSION: 18.20.8
+  # Decidim 0.31's package.json declares "node": ">=22.14.0".
+  NODE_VERSION: 22.14.0
 
 jobs:
   lint:

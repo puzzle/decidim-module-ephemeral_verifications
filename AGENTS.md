@@ -17,6 +17,10 @@ undocumented behaviour, which is written up in
 **Read that document before changing the controller** and update it when relevant
 changes are made to this module.
 
+When a new Decidim version is released, follow the `upgrading-decidim` skill in
+`.agents/skills/` — it covers the version declarations, the copy-drift guard and
+the assumptions the specs cannot check.
+
 ## Commands
 
 ```bash

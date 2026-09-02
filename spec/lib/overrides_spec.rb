@@ -23,9 +23,12 @@ describe "overrides of Decidim files" do
   end
 
   it "matches the upstream originals" do
+    # A renamed or removed file is drift too, and reporting it here beats an
+    # Errno::ENOENT that reads like breakage rather than signal.
     stale = checksums.filter_map do |relative_path, expected|
-      path = Decidim::EphemeralVerifications::Overrides.resolve(relative_path)
-      actual = Digest::SHA256.hexdigest(path.read)
+      actual = Decidim::EphemeralVerifications::Overrides.checksum(relative_path)
+      next "#{relative_path} (no longer exists in Decidim)" if actual.nil?
+
       relative_path unless actual == expected
     end
 

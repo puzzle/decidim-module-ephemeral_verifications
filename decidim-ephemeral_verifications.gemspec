@@ -5,7 +5,8 @@ require_relative "lib/decidim/ephemeral_verifications/version"
 Gem::Specification.new do |spec|
   spec.name = "decidim-ephemeral_verifications"
   spec.version = Decidim::EphemeralVerifications::VERSION
-  spec.required_ruby_version = ">= 3.2"
+  # decidim-core 0.31 itself requires "~> 3.3.0"; advertising less is a lie.
+  spec.required_ruby_version = ">= 3.3"
   spec.license = "AGPL-3.0"
   spec.authors = ["Carlo Beltrame"]
   spec.email = ["beltrame@puzzle.ch"]

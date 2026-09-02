@@ -22,8 +22,13 @@ module Decidim
         Pathname.new(spec.full_gem_path).join(path)
       end
 
+      # Returns nil when the file no longer exists upstream, which is drift
+      # worth reporting rather than an exception to debug.
       def self.checksum(relative_path)
-        Digest::SHA256.hexdigest(resolve(relative_path).read)
+        path = resolve(relative_path)
+        return nil unless path.exist?
+
+        Digest::SHA256.hexdigest(path.read)
       end
 
       def self.checksums_path
@@ -39,6 +44,7 @@ module Decidim
           decidim-verifications:app/views/decidim/verifications/sms/authorizations/edit.html.erb
           decidim-verifications:app/views/decidim/verifications/authorizations/_tos_acceptance_field.html.erb
           decidim-verifications:lib/decidim/verifications/sms/engine.rb
+          decidim-verifications:lib/tasks/revoke.rake
           decidim-verifications:app/commands/decidim/verifications/authorize_user.rb
           decidim-verifications:app/commands/decidim/verifications/confirm_user_authorization.rb
           decidim-verifications:app/commands/decidim/verifications/perform_authorization_step.rb
@@ -48,6 +54,9 @@ module Decidim
 
       def self.write_checksums!
         data = tracked_paths.index_with { |path| checksum(path) }
+        missing = data.select { |_, digest| digest.nil? }.keys
+        raise "No longer present in Decidim, update tracked_paths first:\n  #{missing.join("\n  ")}" if missing.any?
+
         checksums_path.write(YAML.dump(data))
         data
       end
