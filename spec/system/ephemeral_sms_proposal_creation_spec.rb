@@ -27,6 +27,16 @@ describe "Ephemeral SMS verification when creating a proposal" do
   context "when the participant comes back with the same phone number" do
     let(:phone) { "+41791234567" }
 
+    # Granting clears `verification_metadata`, so the record holding a code is
+    # always the ungranted one — which matters on the second pass, where the
+    # earlier granted authorization is still around.
+    def pending_code
+      Decidim::Authorization
+        .where(name: "ephemeral_sms", granted_at: nil)
+        .order(:id).last
+        .verification_metadata["verification_code"]
+    end
+
     it "recovers the earlier session together with the draft" do
       switch_to_host(organization.host)
       visit main_component_path(component)
@@ -36,8 +46,8 @@ describe "Ephemeral SMS verification when creating a proposal" do
       check :mobile_phone_eligible_confirmation
       check :mobile_phone_tos_agreement
       click_on "Send me an SMS"
-      fill_in :confirmation_verification_code,
-              with: Decidim::Authorization.find_by(name: "ephemeral_sms").verification_metadata["verification_code"]
+      expect(page).to have_content("Introduce the verification code you received")
+      fill_in :confirmation_verification_code, with: pending_code
       click_on "Confirm"
 
       fill_in :proposal_title, with: "A proposal from a guest"
@@ -52,9 +62,11 @@ describe "Ephemeral SMS verification when creating a proposal" do
       click_on action_button
       fill_in :mobile_phone_mobile_phone_number, with: phone
       check :mobile_phone_eligible_confirmation
+      # A fresh ephemeral user, so the terms of service are pending again.
+      check :mobile_phone_tos_agreement
       click_on "Send me an SMS"
-      fill_in :confirmation_verification_code,
-              with: Decidim::Authorization.where(name: "ephemeral_sms").order(:id).last.verification_metadata["verification_code"]
+      expect(page).to have_content("Introduce the verification code you received")
+      fill_in :confirmation_verification_code, with: pending_code
       click_on "Confirm"
 
       expect(page).to have_content("Edit proposal draft")

@@ -10,8 +10,14 @@
 shared_examples "an ephemeral SMS verified action" do
   let(:phone) { "+41791234567" }
 
+  # The pending authorization is the one holding a code: granting clears
+  # `verification_metadata`, and a returning participant has an older granted
+  # record alongside the new one.
   def sent_code
-    Decidim::Authorization.find_by(name: "ephemeral_sms").verification_metadata["verification_code"]
+    Decidim::Authorization
+      .where(name: "ephemeral_sms", granted_at: nil)
+      .order(:id).last
+      .verification_metadata["verification_code"]
   end
 
   def request_the_code
@@ -21,7 +27,12 @@ shared_examples "an ephemeral SMS verified action" do
     click_on "Send me an SMS"
   end
 
+  # `sent_code` reads the database, and method arguments are evaluated before
+  # `fill_in` gets a chance to wait for anything, so the page has to be settled
+  # first or the code is read before the request that generates it has finished.
   def confirm_the_code
+    expect(page).to have_content("Introduce the verification code you received")
+
     fill_in :confirmation_verification_code, with: sent_code
     click_on "Confirm"
   end
@@ -34,7 +45,13 @@ shared_examples "an ephemeral SMS verified action" do
   it "starts an ephemeral session instead of asking for a login" do
     expect(page).to have_no_css("#loginModal", visible: :visible)
 
-    expect { click_on action_button }.to change { Decidim::User.ephemeral.count }.by(1)
+    click_on action_button
+
+    # Waiting on the page rather than wrapping the click in a `change` matcher:
+    # the click kicks off a POST and a couple of redirects, and the matcher does
+    # not wait for them.
+    expect(page).to have_content("Request your verification code")
+    expect(Decidim::User.ephemeral.count).to eq(1)
   end
 
   it "verifies by SMS and lets the participant through" do
@@ -42,8 +59,6 @@ shared_examples "an ephemeral SMS verified action" do
 
     expect(page).to have_content("Request your verification code")
     request_the_code
-
-    expect(page).to have_content("Introduce the verification code you received")
     confirm_the_code
 
     expect(page).to have_content(success_content)
@@ -75,6 +90,7 @@ shared_examples "an ephemeral SMS verified action" do
     click_on action_button
     request_the_code
 
+    expect(page).to have_content("Introduce the verification code you received")
     fill_in :confirmation_verification_code, with: "000000"
     click_on "Confirm"
 

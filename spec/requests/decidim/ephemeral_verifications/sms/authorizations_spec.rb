@@ -126,6 +126,28 @@ describe "Ephemeral SMS authorizations" do
       expect(user.reload.accepted_tos_version).to be_within(1.second).of(organization.tos_version)
     end
 
+    # The earlier version of this module deadlocked here: the stored
+    # authorization_path kept pointing at this engine, but neither of its steps
+    # is permitted once the authorization is granted, so every request was
+    # bounced here, forbidden, sent to the root, and bounced here again.
+    it "settles on a real page instead of looping after verification" do
+      put collection_path, params: { confirmation: { verification_code: sent_code } }
+
+      12.times do
+        break unless response.status == 302
+
+        follow_redirect!
+      end
+
+      expect(response).to have_http_status(:ok)
+    end
+
+    it "gives back the authorization path once verified" do
+      put collection_path, params: { confirmation: { verification_code: sent_code } }
+
+      expect(user.reload.extended_data.dig("onboarding", "authorization_path")).to be_nil
+    end
+
     it "rejects a wrong code without granting" do
       put collection_path, params: { confirmation: { verification_code: "000000" } }
 

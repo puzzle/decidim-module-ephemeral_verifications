@@ -135,6 +135,29 @@ module Decidim
           )
         end
 
+        # ...and it has to be given back once the authorization is granted, or
+        # the participant deadlocks again on the way out. `:create` requires
+        # `not_already_active?` and `:update` requires `!granted?`, so both of
+        # this engine's steps stop being permitted the moment verification
+        # succeeds. Every request would then be bounced here, forbidden,
+        # redirected to the root, and bounced here again.
+        #
+        # Clearing the key restores the default, `onboarding_pending`, which is
+        # always allowlisted and which forwards to the intended action.
+        # `Decidim::Initiatives#clear_authorization_path` does the same.
+        def forget_authorization_path(user)
+          return unless user&.ephemeral?
+
+          onboarding = user.extended_data[Decidim::OnboardingManager::DATA_KEY]
+          return if onboarding.blank? || onboarding["authorization_path"].blank?
+
+          user.update(
+            extended_data: user.extended_data.merge(
+              Decidim::OnboardingManager::DATA_KEY => onboarding.except("authorization_path")
+            )
+          )
+        end
+
         # The multistep path never reaches `Decidim::Verifications::AuthorizeUser`,
         # so on its own it implements none of the ephemeral behaviour. Running
         # it here, and only after the code has been confirmed, restores all of
@@ -164,6 +187,8 @@ module Decidim
         end
 
         def finish(message = nil)
+          forget_authorization_path(current_user)
+
           flash[:notice] = message || t("authorizations.update.success", scope: I18N_SCOPE)
           redirect_to redirect_url || decidim_verifications.authorizations_path
         end
@@ -178,6 +203,10 @@ module Decidim
           abandoned = current_user
 
           authorized_user.update(last_sign_in_at: Time.current, deleted_at: nil)
+          # The recovered participant carries their own onboarding data from the
+          # earlier session, which may still point here.
+          forget_authorization_path(authorized_user)
+
           sign_out(abandoned)
           sign_in(authorized_user)
 

@@ -92,7 +92,19 @@ bundle exec rspec
 bundle exec rake development_app   # a real app to click through
 ```
 
-System specs need Chrome and chromedriver.
+System specs need Chrome and chromedriver. `selenium-webdriver` bundles
+Selenium Manager, so both can be fetched without root and without touching the
+system package manager:
+
+```bash
+SM=$(dirname $(gem which selenium/webdriver))/../bin/linux/selenium-manager
+$SM --browser chrome --browser-version stable --output json
+```
+
+That prints the paths it downloaded under `~/.cache/selenium`. Symlink them
+somewhere on your `PATH` (as `google-chrome` and `chromedriver`) and the specs
+will find them. A flatpak or snap Chromium will *not* work: the driver needs a
+real binary path, and the sandbox cannot reach Selenium's temporary profiles.
 
 `bundle exec rspec spec/lib/overrides_spec.rb` checksums the Decidim files this
 module copies or closely adapts. When Decidim changes one of them the spec
