@@ -1,0 +1,42 @@
+---
+de:
+  activemodel:
+    attributes:
+      mobile_phone:
+        eligible_confirmation: Teilnahmeberechtigung
+  decidim:
+    authorization_handlers:
+      admin:
+        ephemeral_sms:
+          help:
+            - Teilnehmende fordern einen Verifizierungscode an, der an ihr Telefon gesendet wird.
+            - Sie bestätigen ihre Teilnahmeberechtigung und geben den Code ein, um verifiziert zu werden.
+            - Sie benötigen kein Konto und können ihre Sitzung später mit derselben Telefonnummer wiederherstellen.
+      ephemeral_sms:
+        explanation: Verifizierung mit einem per SMS zugesandten Code, ohne Konto.
+        fields:
+          # Wird pro Installation über den Term Customizer angepasst.
+          eligible_confirmation_html: Ich bestätige, dass ich zur Teilnahme berechtigt bin.
+        name: SMS-Verifizierung ohne Konto
+    ephemeral_verifications:
+      sms:
+        authorizations:
+          create:
+            error: Bei Ihrer Anfrage ist ein Problem aufgetreten.
+            success: Danke! Wir haben eine SMS an Ihr Telefon gesendet.
+          destroy:
+            success: Verifizierungscode erfolgreich zurückgesetzt. Bitte geben Sie Ihre Telefonnummer erneut ein.
+          edit:
+            confirm_destroy: Sind Sie sicher, dass Sie den Verifizierungscode zurücksetzen möchten?
+            destroy: Verifizierungscode zurücksetzen
+            resend: Verifizierungscode nicht erhalten?
+            send: Bestätigen
+            title: Geben Sie den erhaltenen Verifizierungscode ein
+          new:
+            send: SMS senden
+            title: Verifizierungscode anfordern
+          update:
+            conflict: Diese Telefonnummer wurde bereits von einer anderen Person verifiziert. Bitte kontaktieren Sie uns, falls dies unerwartet ist.
+            error: Ihr Verifizierungscode stimmt nicht mit unserem überein. Bitte überprüfen Sie die SMS, die wir Ihnen gesendet haben.
+            success: Herzlichen Glückwunsch. Sie wurden erfolgreich verifiziert.
+            transferred: Ihre frühere Teilnahme wurde auf dieses Konto übertragen.

@@ -1,0 +1,56 @@
+# frozen_string_literal: true
+
+require "yaml"
+require "digest"
+
+module Decidim
+  module EphemeralVerifications
+    # Resolves and checksums the Decidim files this module copies or closely
+    # adapts, so that an upstream change to any of them fails a test instead of
+    # silently diverging. Used by spec/lib/overrides_spec.rb and by the
+    # `overrides:checksums` rake task.
+    module Overrides
+      # Paths are given as "<gem name>:<path within that gem>".
+      def self.resolve(relative_path)
+        gem_name, path = relative_path.split(":", 2)
+        raise ArgumentError, "expected '<gem>:<path>', got #{relative_path.inspect}" if path.nil?
+
+        spec = Gem.loaded_specs.fetch(gem_name) do
+          raise ArgumentError, "#{gem_name} is not loaded"
+        end
+
+        Pathname.new(spec.full_gem_path).join(path)
+      end
+
+      def self.checksum(relative_path)
+        Digest::SHA256.hexdigest(resolve(relative_path).read)
+      end
+
+      def self.checksums_path
+        Pathname.new(__dir__).join("../../../spec/overrides.yml").expand_path
+      end
+
+      def self.tracked_paths
+        %w(
+          decidim-verifications:app/controllers/decidim/verifications/sms/authorizations_controller.rb
+          decidim-verifications:app/forms/decidim/verifications/sms/mobile_phone_form.rb
+          decidim-verifications:app/forms/decidim/verifications/sms/confirmation_form.rb
+          decidim-verifications:app/views/decidim/verifications/sms/authorizations/new.html.erb
+          decidim-verifications:app/views/decidim/verifications/sms/authorizations/edit.html.erb
+          decidim-verifications:app/views/decidim/verifications/authorizations/_tos_acceptance_field.html.erb
+          decidim-verifications:lib/decidim/verifications/sms/engine.rb
+          decidim-verifications:app/commands/decidim/verifications/authorize_user.rb
+          decidim-verifications:app/commands/decidim/verifications/confirm_user_authorization.rb
+          decidim-verifications:app/commands/decidim/verifications/perform_authorization_step.rb
+          decidim-core:app/controllers/concerns/decidim/ephemeral_session_checker.rb
+        ).freeze
+      end
+
+      def self.write_checksums!
+        data = tracked_paths.index_with { |path| checksum(path) }
+        checksums_path.write(YAML.dump(data))
+        data
+      end
+    end
+  end
+end

@@ -1,0 +1,44 @@
+---
+en:
+  activemodel:
+    attributes:
+      mobile_phone:
+        eligible_confirmation: Eligibility confirmation
+  decidim:
+    authorization_handlers:
+      admin:
+        ephemeral_sms:
+          help:
+            - Participants request a verification code that is sent to their phone.
+            - They confirm that they are eligible to take part, and enter the code to get verified.
+            - They do not need an account, and can recover their session later with the same phone number.
+      ephemeral_sms:
+        explanation: Verify with a code sent by SMS, without creating an account.
+        fields:
+          # Meant to be replaced per installation through the term customizer.
+          # Checkbox labels are rendered as HTML by Decidim's form builder, so
+          # a link works here.
+          eligible_confirmation_html: I confirm that I am eligible to take part.
+        name: SMS verification without an account
+    ephemeral_verifications:
+      sms:
+        authorizations:
+          create:
+            error: There was a problem with your request.
+            success: Thanks! We have sent an SMS to your phone.
+          destroy:
+            success: Verification code successfully reset. Please re-enter your phone number.
+          edit:
+            confirm_destroy: Are you sure you want to reset the verification code?
+            destroy: Reset verification code
+            resend: Did not receive the verification code?
+            send: Confirm
+            title: Introduce the verification code you received
+          new:
+            send: Send me an SMS
+            title: Request your verification code
+          update:
+            conflict: This phone number is already verified by another participant. Please contact us if this is unexpected.
+            error: Your verification code does not match ours. Please double-check the SMS we sent you.
+            success: Congratulations. You have been successfully verified.
+            transferred: Your previous participation has been transferred to this account.

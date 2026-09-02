@@ -1,0 +1,43 @@
+<%#
+  Adapted from decidim/verifications/sms/authorizations/edit.html.erb. The
+  reset link uses Turbo attributes rather than upstream's `method: :delete`,
+  which no longer does anything now that Decidim ships Turbo instead of
+  rails-ujs.
+%>
+<div class="text-center py-10">
+  <h1 class="title-decorator inline-block text-left">
+    <%= t("decidim.ephemeral_verifications.sms.authorizations.edit.title") %>
+  </h1>
+</div>
+
+<%= decidim_form_for(@form, url: authorization_path(redirect_url:), method: :put) do |form| %>
+  <%= form_required_explanation %>
+
+  <div class="form__wrapper">
+    <%= form.text_field :verification_code, placeholder: "XXXXXX" %>
+  </div>
+
+  <div class="form__wrapper-block flex-col-reverse md:flex-row justify-between">
+    <% if onboarding_manager.available_authorization_selection_page? %>
+      <%= link_to authorizations_back_path(current_user, redirect_url:), class: "button button__sm md:button__lg button__text-secondary" do %>
+        <%= icon "arrow-left-line", class: "fill-current" %>
+        <span><%= t("decidim.wizard_step_form.wizard_aside.back") %></span>
+      <% end %>
+    <% end %>
+    <button type="submit" class="button button__sm md:button__lg button__secondary">
+      <span><%= t("decidim.ephemeral_verifications.sms.authorizations.edit.send") %></span>
+      <%= icon "arrow-right-line", class: "fill-current" %>
+    </button>
+  </div>
+
+  <p>
+    <%= t("decidim.ephemeral_verifications.sms.authorizations.edit.resend") %>
+    <%= link_to t("decidim.ephemeral_verifications.sms.authorizations.edit.destroy"),
+                decidim_ephemeral_sms.authorization_path,
+                data: {
+                  turbo_method: :delete,
+                  turbo_confirm: t("decidim.ephemeral_verifications.sms.authorizations.edit.confirm_destroy")
+                },
+                class: "underline text-secondary" %>
+  </p>
+<% end %>

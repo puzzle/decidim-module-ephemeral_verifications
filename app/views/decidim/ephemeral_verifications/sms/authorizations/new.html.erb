@@ -1,0 +1,44 @@
+<%#
+  Adapted from decidim/verifications/sms/authorizations/new.html.erb, plus the
+  ephemeral-specific pieces of decidim/verifications/authorizations/new.html.erb
+  (the terms of service field and the guarded back link), which the core SMS
+  view does not have because the core SMS workflow is not ephemeral.
+%>
+<div class="text-center py-10">
+  <h1 class="title-decorator inline-block text-left">
+    <%= t("decidim.ephemeral_verifications.sms.authorizations.new.title") %>
+  </h1>
+</div>
+
+<%= decidim_form_for(@form, url: authorization_path(redirect_url:)) do |form| %>
+  <%= form_required_explanation %>
+
+  <div class="form__wrapper">
+    <%= form.text_field :mobile_phone_number %>
+  </div>
+
+  <div class="form__wrapper-block">
+    <%= form.check_box :eligible_confirmation,
+                       label: t("decidim.authorization_handlers.ephemeral_sms.fields.eligible_confirmation_html"),
+                       label_options: { class: "form__wrapper-checkbox-label" } %>
+  </div>
+
+  <% if current_user.ephemeral? && !current_user.tos_accepted? %>
+    <%= render partial: "decidim/verifications/authorizations/tos_acceptance_field", locals: { form: } %>
+  <% end %>
+
+  <div class="form__wrapper-block flex-col-reverse md:flex-row justify-between">
+    <%# An ephemeral participant with a single configured workflow has nowhere
+        to go back to, so the link would be a dead end for them. %>
+    <% if onboarding_manager.available_authorization_selection_page? %>
+      <%= link_to authorizations_back_path(current_user, redirect_url:), class: "button button__sm md:button__lg button__text-secondary" do %>
+        <%= icon "arrow-left-line", class: "fill-current" %>
+        <span><%= t("decidim.wizard_step_form.wizard_aside.back") %></span>
+      <% end %>
+    <% end %>
+    <button type="submit" class="button button__sm md:button__lg button__secondary">
+      <span><%= t("decidim.ephemeral_verifications.sms.authorizations.new.send") %></span>
+      <%= icon "arrow-right-line", class: "fill-current" %>
+    </button>
+  </div>
+<% end %>

@@ -1,0 +1,9 @@
+spec/decidim_dummy_app
+development_app
+Gemfile.lock
+.bundle
+/log/*
+/tmp/*
+node_modules
+coverage
+.rspec-failures
