@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "database_defaults"
-
 require "decidim/dev"
 
 ENV["ENGINE_ROOT"] = File.dirname(__dir__)

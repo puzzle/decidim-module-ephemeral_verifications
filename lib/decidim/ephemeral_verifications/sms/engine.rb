@@ -36,6 +36,11 @@ module Decidim
             workflow.ephemeral = true
             workflow.engine = Decidim::EphemeralVerifications::Sms::Engine
             workflow.icon = "message-3-line"
+            # Decidim defaults this to true, which publishes a destructive GET
+            # at <engine>/authorizations/renew. A participant holding a
+            # transferred authorization could use it to free the phone number
+            # and let a second vote be cast with it.
+            workflow.renewable = false
           end
         end
       end

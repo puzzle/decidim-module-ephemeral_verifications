@@ -46,6 +46,7 @@ describe "Ephemeral SMS verification when creating a proposal" do
       check :mobile_phone_eligible_confirmation
       check :mobile_phone_tos_agreement
       click_on "Send me an SMS"
+      expect(page).to have_current_path(%r{/authorizations/edit}, url: true, ignore_query: true)
       expect(page).to have_content("Introduce the verification code you received")
       fill_in :confirmation_verification_code, with: pending_code
       click_on "Confirm"
@@ -56,7 +57,12 @@ describe "Ephemeral SMS verification when creating a proposal" do
 
       expect(page).to have_content("Proposal successfully created")
 
+      # Closing the ephemeral session signs the participant out and navigates,
+      # which replaces the document. Anchor on the new page before touching it
+      # again, or a query still resolving nodes from the old one fails with
+      # "Node with given id does not belong to the document".
       accept_confirm { find("#main-bar [data-close]").click }
+      expect(page).to have_no_css("#main-bar [data-close]")
 
       visit main_component_path(component)
       click_on action_button
@@ -65,6 +71,7 @@ describe "Ephemeral SMS verification when creating a proposal" do
       # A fresh ephemeral user, so the terms of service are pending again.
       check :mobile_phone_tos_agreement
       click_on "Send me an SMS"
+      expect(page).to have_current_path(%r{/authorizations/edit}, url: true, ignore_query: true)
       expect(page).to have_content("Introduce the verification code you received")
       fill_in :confirmation_verification_code, with: pending_code
       click_on "Confirm"

@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require_relative "spec/database_defaults"
 require "decidim/dev/common_rake"
 
 desc "Generates a dummy app for testing"
@@ -14,10 +13,10 @@ task :development_app do
       "--app_name", "#{base_app_name}_development_app",
       "--path", "..",
       "--recreate_db",
+      "--seed_db",
       "--demo"
     )
   end
-  seed_db("development_app")
 end
 
 namespace :overrides do

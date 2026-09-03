@@ -11,7 +11,96 @@ This document is what we had to reconstruct from the Decidim source in order to
 build one. It is written to be useful outside this module, and everything in it
 is verifiable against Decidim 0.31.
 
-## 1. Authorizations, workflows and the registry
+Read it in order. Section 1 is the decision that shapes everything else,
+section 2 is the machinery you register into, section 3 is what Decidim does at
+runtime, section 4 and section 5 are the two things you have to supply
+yourself, and section 6 is the checklist.
+
+## 1. First decide: direct or multistep
+
+A **direct** workflow (`workflow.form = "SomeHandler"`) is one form, one
+request, one command. Decidim owns the controller:
+`AuthorizationsController#new` renders your handler's `to_partial_path`
+partial, and `#create` reconstructs the handler and hands it to
+`Decidim::Verifications::AuthorizeUser`, which validates and grants in one go.
+
+A **multistep** workflow (`workflow.engine = …`) means you own the controller
+and the URLs, and state travels between requests in the ungranted
+authorization's `verification_metadata`: `PerformAuthorizationStep` writes it,
+`ConfirmUserAuthorization` compares it and grants.
+
+`ephemeral` is orthogonal to both — but only the direct path goes through
+`AuthorizeUser`, and `AuthorizeUser` is where all the ephemeral behaviour lives:
+
+```ruby
+if !handler.unique? && handler.user_transferrable?
+  handler.user = handler.duplicate.user
+  Authorization.create_or_update_from(handler)
+  return broadcast(:transfer_user, handler.user)
+end
+return transfer_authorization if !handler.unique? && handler.transferrable?
+if handler.invalid?
+  register_conflict
+  return broadcast(:invalid)
+end
+return broadcast(:invalid) unless set_tos_agreement
+```
+
+- `:transfer_user` — duplicate exists and *both* users are ephemeral: the
+  session hops to the earlier ephemeral user, recovering their votes and
+  drafts.
+- `:transferred` — duplicate belongs to a deleted or ephemeral user while the
+  current user is a real account: `Authorization#transfer!` moves the
+  authorization *and the authored records* to that account.
+- `set_tos_agreement` — an ephemeral participant must tick `tos_agreement`, and
+  this is the only place `accepted_tos_version` is written.
+
+**A multistep workflow gets none of that.** If you build one, you must supply
+it yourself.
+
+### Why this module is multistep anyway
+
+SMS cannot fit the direct shape, because the code does not exist until the
+phone number has been submitted. Core's `MobilePhoneForm` shows the dependency
+plainly: `verification_code` is computed *during validation* by calling
+`deliver_code`, and the value is written into `verification_metadata` for a
+later request to compare. One submission cannot both trigger the send and
+collect what the send produced.
+
+The cheapest way to get the ephemeral behaviour back is not to reimplement it
+but to run `AuthorizeUser` yourself, after the code has been confirmed:
+
+```ruby
+Decidim::Verifications::ConfirmUserAuthorization.call(authorization, form, session) do
+  on(:ok) { resolve_duplicates }   # runs AuthorizeUser with a small value-object handler
+  # ...
+end
+```
+
+**The order is a security property, not a detail.** The code is the proof of
+phone ownership. Resolving duplicates before confirming it would let anyone
+type a stranger's number and inherit their session and their vote.
+
+That ordering is also why step one must *tolerate* duplicates. `unique_id`
+identifies a proof, not a user, and Decidim's invariant — enforced by
+`AuthorizationHandler#uniqueness` — is that one identity must not hold two
+authorizations of the same kind. That refusal is correct for registered
+accounts. It is wrong for ephemeral ones, because the account is disposable but
+the person is not, and `DestroyEphemeralUser` keeps their granted
+authorization. A returning participant therefore collides with *their own*
+earlier proof and, without special handling, gets a generic error and is locked
+out of a vote they already cast. So: override `unique?` in the first step, and
+let `AuthorizeUser` arbitrate in the second.
+
+Two authorizations transiently share a `unique_id` while this happens. That is
+legal — the index is not unique — and `AuthorizationHandler#duplicate` scopes
+to `User.where.not(id: user.id)`, so it resolves to the right record. Do delete
+the redundant one afterwards, or a third visit finds two candidates.
+
+Soft-deleted users stay visible to `#duplicate`: `Decidim::User` has no
+`default_scope`, and `transferrable?` explicitly tests `duplicate.user.deleted?`.
+
+## 2. Authorizations, workflows and the registry
 
 Four loosely coupled layers. Knowing which layer owns which decision is most of
 the work.
@@ -125,9 +214,9 @@ ephemeral code to write.
 `Decidim::Authorization` holds `name`, `decidim_user_id`, `unique_id`,
 `metadata`, `verification_metadata` and `granted_at`. Both metadata columns are
 encrypted at rest. The only unique index is `[decidim_user_id, name]`;
-`unique_id` is indexed but **not** unique, which matters in section 3.
+`unique_id` is indexed but **not** unique, which matters in section 4.
 
-## 2. What `ephemeral` changes, step by step
+## 3. How Decidim processes an ephemeral participant
 
 `ephemeral` is a flag, not a mechanism. It opts a workflow into a flow that
 lives in `decidim-core`. Here is the whole sequence for a logged-out visitor
@@ -185,90 +274,6 @@ happen inside one ephemeral workflow.
 The filter is one-directional, though: an ephemeral handler *is* evaluated for
 a registered, logged-in participant. Your ephemeral workflow therefore serves
 both populations, which is easy to forget when deciding what to ask for.
-
-## 3. Direct or multistep, and why it matters more than it looks
-
-A **direct** workflow (`workflow.form = "SomeHandler"`) is one form, one
-request, one command. Decidim owns the controller:
-`AuthorizationsController#new` renders your handler's `to_partial_path`
-partial, and `#create` reconstructs the handler and hands it to
-`Decidim::Verifications::AuthorizeUser`, which validates and grants in one go.
-
-A **multistep** workflow (`workflow.engine = …`) means you own the controller
-and the URLs, and state travels between requests in the ungranted
-authorization's `verification_metadata`: `PerformAuthorizationStep` writes it,
-`ConfirmUserAuthorization` compares it and grants.
-
-`ephemeral` is orthogonal to both — but only the direct path goes through
-`AuthorizeUser`, and `AuthorizeUser` is where all the ephemeral behaviour lives:
-
-```ruby
-if !handler.unique? && handler.user_transferrable?
-  handler.user = handler.duplicate.user
-  Authorization.create_or_update_from(handler)
-  return broadcast(:transfer_user, handler.user)
-end
-return transfer_authorization if !handler.unique? && handler.transferrable?
-if handler.invalid?
-  register_conflict
-  return broadcast(:invalid)
-end
-return broadcast(:invalid) unless set_tos_agreement
-```
-
-- `:transfer_user` — duplicate exists and *both* users are ephemeral: the
-  session hops to the earlier ephemeral user, recovering their votes and
-  drafts.
-- `:transferred` — duplicate belongs to a deleted or ephemeral user while the
-  current user is a real account: `Authorization#transfer!` moves the
-  authorization *and the authored records* to that account.
-- `set_tos_agreement` — an ephemeral participant must tick `tos_agreement`, and
-  this is the only place `accepted_tos_version` is written.
-
-**A multistep workflow gets none of that.** If you build one, you must supply
-it yourself.
-
-### Why this module is multistep anyway
-
-SMS cannot fit the direct shape, because the code does not exist until the
-phone number has been submitted. Core's `MobilePhoneForm` shows the dependency
-plainly: `verification_code` is computed *during validation* by calling
-`deliver_code`, and the value is written into `verification_metadata` for a
-later request to compare. One submission cannot both trigger the send and
-collect what the send produced.
-
-The cheapest way to get the ephemeral behaviour back is not to reimplement it
-but to run `AuthorizeUser` yourself, after the code has been confirmed:
-
-```ruby
-Decidim::Verifications::ConfirmUserAuthorization.call(authorization, form, session) do
-  on(:ok) { resolve_duplicates }   # runs AuthorizeUser with a small value-object handler
-  # ...
-end
-```
-
-**The order is a security property, not a detail.** The code is the proof of
-phone ownership. Resolving duplicates before confirming it would let anyone
-type a stranger's number and inherit their session and their vote.
-
-That ordering is also why step one must *tolerate* duplicates. `unique_id`
-identifies a proof, not a user, and Decidim's invariant — enforced by
-`AuthorizationHandler#uniqueness` — is that one identity must not hold two
-authorizations of the same kind. That refusal is correct for registered
-accounts. It is wrong for ephemeral ones, because the account is disposable but
-the person is not, and `DestroyEphemeralUser` keeps their granted
-authorization. A returning participant therefore collides with *their own*
-earlier proof and, without special handling, gets a generic error and is locked
-out of a vote they already cast. So: override `unique?` in the first step, and
-let `AuthorizeUser` arbitrate in the second.
-
-Two authorizations transiently share a `unique_id` while this happens. That is
-legal — the index is not unique — and `AuthorizationHandler#duplicate` scopes
-to `User.where.not(id: user.id)`, so it resolves to the right record. Do delete
-the redundant one afterwards, or a third visit finds two candidates.
-
-Soft-deleted users stay visible to `#duplicate`: `Decidim::User` has no
-`default_scope`, and `transferrable?` explicitly tests `duplicate.user.deleted?`.
 
 ## 4. The deadlock every multistep ephemeral workflow hits
 
@@ -342,7 +347,85 @@ exactly this reason, and `#clear_authorization_path` resets it afterwards.
 This is also the one place where keeping every route under the engine's mount
 point pays off: a single prefix entry covers the entire flow.
 
-## 5. Checklist
+## 5. Risks you have to handle yourself
+
+Decidim's ephemeral flow removes the account barrier. Everything an account
+used to imply — that someone confirmed an email, that a request is attributable,
+that a rate limit has a subject — stops being true, and the pieces upstream
+provides do not fill the gap. These are the ones we found by attacking our own
+implementation.
+
+### An unauthenticated visitor spends your SMS budget
+
+Step one sends a message to whatever number is typed, and a workflow that
+supports resending (a "did not receive the code?" link, or `destroy` followed by
+a fresh `create`) will send another. Nothing upstream caps this: Decidim's only
+brake is the generic per-IP `Rack::Attack.throttle` of 100 requests a minute,
+which is per-IP rather than per-number and trivially distributed. Every
+iteration costs money and delivers a message to a third party who did not ask
+for it.
+
+Cap resends against the `code_sent_at` you are already storing — a short
+cooldown plus an hourly ceiling per `unique_id` — and tell integrators to add a
+`Rack::Attack` rule for the create action.
+
+### The code is brute-forceable, and upstream's throttle does not stop it
+
+`Decidim::Verifications::ConfirmUserAuthorization` counts failures in
+`session[:failed_attempts]`. Decidim runs the **cookie** session store, so that
+counter is held by the client: replay the cookie captured after step one and the
+count is always zero. Even when it does trip, the response is
+`sleep rand * failed_attempts` — a delay, never a lockout.
+
+There is also no expiry. `code_sent_at` is written into `verification_metadata`
+and **never read** — `confirmation_successful?` compares only the code — and
+nothing reaps ungranted authorizations except the ephemeral session teardown. So
+a registered participant's pending record and its code live indefinitely.
+
+Neither weakness matters much for upstream's own `sms` workflow, which is not
+ephemeral and requires a confirmed account. It matters here, because confirming
+a code is what triggers session recovery and record transfer: grinding a code
+for a number you do not own hands you that participant's ephemeral session, or
+moves their authored records onto your account.
+
+Enforce both server-side, on the record rather than in the session: reject a
+code older than a few minutes, count attempts in `verification_metadata`, and
+destroy the record once the count is exceeded so a fresh code is required.
+
+### Renewal is a destructive GET, and it can buy a second vote
+
+`workflow.renewable` defaults to **true**. That publishes
+`GET <engine>/authorizations/renew`, which `Decidim::Verifications::Renewable`
+wires straight to `DestroyUserAuthorization`. Two consequences: a destructive
+action behind a GET is reachable by prefetch or an `<img src>`, and — worse —
+a participant who received a *transferred* authorization can destroy it, freeing
+the phone number so a second authorization can be granted for it. One phone,
+two votes.
+
+Set `workflow.renewable = false` unless renewal genuinely makes sense for your
+verification. The route can stay: `Authorization#renewable?` then returns false,
+which also denies the `:renew` permission. Leaving it enabled also exposes a
+`renew_modal` that renders your metadata keys, so you would need i18n entries
+for every attribute you store.
+
+### What the test suite can and cannot tell you
+
+The four assumptions in sections 3 and 4 are not verifiable by a test: they are
+statements about Decidim's behaviour, and our code exercises them rather than
+asserting them. What a checksum guard over the upstream files *can* do is
+guarantee you are told when the ground moves — a change to
+`action_authorizer.rb`, `permissions.rb`, `authorization_handler.rb`,
+`authorization.rb`, `authorization_transfer.rb` or `renewable.rb` fails a test
+instead of passing silently, which forces a re-read.
+
+That is the distinction worth keeping straight: the suite does not verify the
+assumptions, it refuses to stay quiet when the files they live in change. Track
+a file if and only if a documented assumption depends on it. Measured against
+Decidim's history, this costs nothing day to day — none of those files changed
+across any 0.31 patch release — and fires at minor upgrades, which is when you
+have to look anyway.
+
+## 6. Checklist
 
 1. Pick a workflow name that cannot collide, and never change it once
    authorizations exist.

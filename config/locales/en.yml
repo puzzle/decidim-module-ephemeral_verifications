@@ -26,6 +26,7 @@ en:
           create:
             error: There was a problem with your request.
             success: Thanks! We have sent an SMS to your phone.
+            too_soon: We have just sent you a code. Please wait a moment before requesting another one.
           destroy:
             success: Verification code successfully reset. Please re-enter your phone number.
           edit:
@@ -40,5 +41,6 @@ en:
           update:
             conflict: This phone number is already verified by another participant. Please contact us if this is unexpected.
             error: Your verification code does not match ours. Please double-check the SMS we sent you.
+            expired: That code is no longer valid. Please request a new one.
             success: Congratulations. You have been successfully verified.
             transferred: You now have access to your previous participation.

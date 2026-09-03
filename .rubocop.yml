@@ -1,12 +1,6 @@
 inherit_gem:
   decidim-dev: rubocop-decidim.yml
 
-AllCops:
-  TargetRubyVersion: 3.3
-  Exclude:
-    - spec/decidim_dummy_app/**/*
-    - development_app/**/*
-
 # Feature-level specs and the copy-drift guard describe behaviour and files,
 # not classes.
 RSpec/DescribeClass:

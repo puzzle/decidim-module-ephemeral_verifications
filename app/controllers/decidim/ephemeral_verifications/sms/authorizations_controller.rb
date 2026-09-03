@@ -12,21 +12,28 @@ module Decidim
       class AuthorizationsController < Decidim::Verifications::ApplicationController
         I18N_SCOPE = "decidim.ephemeral_verifications.sms"
 
+        # A code is worthless to an attacker who cannot use it before it dies,
+        # and cheap to grind if they can try forever. Both limits are enforced
+        # on the authorization record, not in the session.
+        CODE_VALID_FOR = 10.minutes
+        MAX_ATTEMPTS = 5
+        RESEND_COOLDOWN = 1.minute
+
         include Decidim::Verifications::Renewable
         include Decidim::HtmlSafeFlash
-
-        # This engine isolates its own namespace, so helpers from the core and
-        # verifications engines are not included automatically.
-        helper Decidim::Verifications::ApplicationHelper
-        helper Decidim::DecidimFormHelper
-        helper Decidim::TranslationsHelper
-        helper Decidim::LayoutHelper
 
         before_action :remember_authorization_path
 
         helper_method :authorization
 
         def new
+          # Resume rather than refuse. Once step one has saved an ungranted
+          # authorization, `:create` is denied by `not_already_active?`, so a
+          # second tab, a reload or a bookmarked URL would raise
+          # ActionForbidden, bounce to the root, and be sent straight back here
+          # by EphemeralSessionChecker — an infinite loop.
+          return redirect_to adapter.resume_authorization_path(redirect_url:) if pending_authorization?
+
           enforce_permission_to(:create, :authorization, authorization:)
 
           @form = MobilePhoneForm.new(user: current_user)
@@ -35,7 +42,12 @@ module Decidim
         def create
           enforce_permission_to(:create, :authorization, authorization:)
 
-          @form = MobilePhoneForm.from_params(params.merge(user: current_user))
+          return redirect_to(adapter.resume_authorization_path(redirect_url:), alert: t("authorizations.create.too_soon", scope: I18N_SCOPE)) if resend_too_soon?
+
+          # `user:` goes in `additional_params`, which `from_params` merges
+          # last. Passing it inside `params` lets a crafted `mobile_phone[user]`
+          # displace `current_user` and forge the terms-of-service gate.
+          @form = MobilePhoneForm.from_params(params, user: current_user)
 
           Decidim::Verifications::PerformAuthorizationStep.call(authorization, @form) do
             on(:ok) do
@@ -51,15 +63,31 @@ module Decidim
         end
 
         def edit
+          # Nothing to confirm — the code was never requested, or it expired and
+          # was destroyed. Without this, a stray confirmation would persist a
+          # fresh empty authorization on the way to failing.
+          return redirect_to adapter.root_path(redirect_url:) unless pending_authorization?
+
           enforce_permission_to(:update, :authorization, authorization:)
 
           @form = confirmation_form
         end
 
         def update
+          # Nothing to confirm — the code was never requested, or it expired and
+          # was destroyed. Without this, a stray confirmation would persist a
+          # fresh empty authorization on the way to failing.
+          return redirect_to adapter.root_path(redirect_url:) unless pending_authorization?
+
           enforce_permission_to(:update, :authorization, authorization:)
 
           @form = confirmation_form
+
+          # Upstream counts failures in `session[:failed_attempts]`, and Decidim
+          # runs the cookie session store, so that counter is held by the client
+          # and a replayed cookie resets it. It also never checks `code_sent_at`.
+          # Both have to be enforced on the record instead.
+          return expire_code! if code_expired? || too_many_attempts?
 
           # Reuses upstream's code comparison along with its
           # MAX_FAILED_ATTEMPTS throttling. It grants the authorization, which
@@ -78,12 +106,20 @@ module Decidim
 
           return resolve_duplicates if confirmed
 
+          # Reaching the attempt cap kills the code and responds itself.
+          return if record_failed_attempt!
+
           flash.now[:alert] = t("authorizations.update.error", scope: I18N_SCOPE)
           render :edit, status: :unprocessable_entity
         end
 
         def destroy
           enforce_permission_to(:destroy, :authorization, authorization:)
+
+          # This is the resend path — `create` is forbidden while a record is
+          # pending, so a resend loop runs through here and would otherwise
+          # wipe the `code_sent_at` the cooldown is measured against.
+          return redirect_to(adapter.resume_authorization_path(redirect_url:), alert: t("authorizations.create.too_soon", scope: I18N_SCOPE)) if resend_too_soon?
 
           authorization.destroy!
           flash[:notice] = t("authorizations.destroy.success", scope: I18N_SCOPE)
@@ -104,11 +140,80 @@ module Decidim
           @adapter ||= Decidim::Verifications::Adapter.from_element(WORKFLOW_NAME)
         end
 
+        def pending_authorization?
+          authorization.persisted? && !authorization.granted?
+        end
+
+        # Sending an SMS costs money and reaches a third party who did not ask
+        # for it, and `destroy` followed by `create` is a resend loop the edit
+        # view offers as a link.
+        def resend_too_soon?
+          return false unless pending_authorization?
+
+          sent_at = authorization.verification_metadata["code_sent_at"]
+          return false if sent_at.blank?
+
+          Time.zone.parse(sent_at.to_s) > RESEND_COOLDOWN.ago
+        rescue ArgumentError, TypeError
+          false
+        end
+
+        def code_expired?
+          sent_at = authorization.verification_metadata["code_sent_at"]
+          return false if sent_at.blank?
+
+          Time.zone.parse(sent_at.to_s) < CODE_VALID_FOR.ago
+        rescue ArgumentError, TypeError
+          false
+        end
+
+        def failed_attempts
+          authorization.verification_metadata["failed_attempts"].to_i
+        end
+
+        def too_many_attempts?
+          failed_attempts >= MAX_ATTEMPTS
+        end
+
+        # Returns true when the cap was reached, in which case it has already
+        # destroyed the code and issued the response.
+        def record_failed_attempt!
+          attempts = failed_attempts + 1
+
+          if attempts >= MAX_ATTEMPTS
+            expire_code!
+            return true
+          end
+
+          authorization.update!(
+            verification_metadata: authorization.verification_metadata.merge("failed_attempts" => attempts)
+          )
+          false
+        end
+
+        # Destroying the record is what makes the limits bite: the participant
+        # has to request a fresh code, which is rate limited in turn.
+        def expire_code!
+          authorization.destroy!
+          forget_authorization_path(current_user)
+
+          flash[:alert] = t("authorizations.update.expired", scope: I18N_SCOPE)
+          redirect_to adapter.root_path(redirect_url:)
+        end
+
+        # An ephemeral participant may only be sent somewhere the session
+        # checker allowlists; `authorizations_path` is not on that list.
+        def after_failure_path
+          return decidim_verifications.onboarding_pending_authorizations_path if current_user.ephemeral?
+
+          decidim_verifications.authorizations_path
+        end
+
         # Upstream's confirmation form is reused as is: it holds nothing but
         # the code, and it is deliberately built without a user so the
         # inherited terms of service validation stays out of the way.
         def confirmation_form
-          Decidim::Verifications::Sms::ConfirmationForm.from_params(params)
+          Decidim::Verifications::Sms::ConfirmationForm.from_params(params.slice(:confirmation))
         end
 
         # Without this an ephemeral participant deadlocks between the two
@@ -168,7 +273,13 @@ module Decidim
           # the two users. `[decidim_user_id, name]` is unique, so the record
           # just granted has to make way first; the handler above already
           # carries everything from it that matters.
-          authorization.destroy! unless handler.unique?
+          # One transaction: `AuthorizeUser` can still fail after the destroy
+          # (transfers disabled, the duplicate vanishing, a missing terms
+          # acceptance), and a half-applied resolution leaves the participant
+          # verified nowhere.
+          ActiveRecord::Base.transaction do
+            authorization.destroy! unless handler.unique?
+          end
 
           Decidim::Verifications::AuthorizeUser.call(handler, current_organization) do
             on(:ok) { finish }
@@ -178,8 +289,13 @@ module Decidim
             on(:transfer_user) { |authorized_user| recover_session(authorized_user) }
 
             on(:invalid) do
+              # Without this the participant is stranded: the stored
+              # authorization path still points here, but every action is now
+              # forbidden, so they bounce between this engine and the root.
+              forget_authorization_path(current_user)
+
               flash[:alert] = t("authorizations.update.conflict", scope: I18N_SCOPE)
-              redirect_to decidim_verifications.authorizations_path
+              redirect_to after_failure_path
             end
           end
         end

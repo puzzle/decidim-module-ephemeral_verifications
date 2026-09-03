@@ -31,6 +31,10 @@ shared_examples "an ephemeral SMS verified action" do
   # `fill_in` gets a chance to wait for anything, so the page has to be settled
   # first or the code is read before the request that generates it has finished.
   def confirm_the_code
+    # `have_current_path` polls `current_url` and holds no node references, so
+    # it cannot trip over the DOM being replaced. Once the URL has settled the
+    # document is stable and a content assertion is safe.
+    expect(page).to have_current_path(%r{/authorizations/edit}, url: true, ignore_query: true)
     expect(page).to have_content("Introduce the verification code you received")
 
     fill_in :confirmation_verification_code, with: sent_code

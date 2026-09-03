@@ -99,10 +99,31 @@ bundle exec rake development_app   # a real app to click through
 
 The suite needs no configuration and no other application's database.
 `docker-compose.yml` runs Postgres on **5433**, so it coexists with one already
-listening on 5432, and `spec/database_defaults.rb` points the generated app at
+listening on 5432, and `database_defaults.rb` points the generated app at
 it. Every value defers to the environment, so `DATABASE_HOST`, `DATABASE_PORT`,
 `DATABASE_USERNAME` and `DATABASE_PASSWORD` still win if you would rather use
 your own Postgres — which is what CI does.
+
+### Stopping things again
+
+```bash
+docker compose down                  # stop Postgres, keep the data
+docker compose down -v               # ...and discard the databases too
+rm -rf spec/decidim_dummy_app        # drop the generated test app
+rm -rf development_app               # drop the generated development app
+```
+
+The two generated apps are gitignored and disposable — `rake test_app` and
+`rake development_app` recreate them. Nothing else needs stopping: `rspec`
+starts its own Puma and Chrome and shuts both down when it finishes, and
+`rake development_app` only generates the app (`cd development_app && bin/rails
+server` runs it, so Ctrl-C stops it). Dropping just the databases, without
+removing the volume:
+
+```bash
+docker compose exec pg psql -U decidim -c \
+  'DROP DATABASE IF EXISTS decidim_module_ephemeral_verifications_test_app_test'
+```
 
 System specs need Chrome and chromedriver. `selenium-webdriver` bundles
 Selenium Manager, so both can be fetched without root and without touching the

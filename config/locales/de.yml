@@ -24,6 +24,7 @@ de:
           create:
             error: Bei Ihrer Anfrage ist ein Problem aufgetreten.
             success: Danke! Wir haben eine SMS an Ihr Telefon gesendet.
+            too_soon: Wir haben Ihnen gerade einen Code gesendet. Bitte warten Sie einen Moment, bevor Sie einen neuen anfordern.
           destroy:
             success: Verifizierungscode erfolgreich zurückgesetzt. Bitte geben Sie Ihre Telefonnummer erneut ein.
           edit:
@@ -38,5 +39,6 @@ de:
           update:
             conflict: Diese Telefonnummer wurde bereits von einer anderen Person verifiziert. Bitte kontaktieren Sie uns, falls dies unerwartet ist.
             error: Ihr Verifizierungscode stimmt nicht mit unserem überein. Bitte überprüfen Sie die SMS, die wir Ihnen gesendet haben.
+            expired: Dieser Code ist nicht mehr gültig. Bitte fordern Sie einen neuen an.
             success: Herzlichen Glückwunsch. Sie wurden erfolgreich verifiziert.
             transferred: Sie haben jetzt wieder Zugriff auf Ihre frühere Teilnahme.

@@ -1,0 +1,24 @@
+# Only the missing-keys check earns its keep here.
+#
+# `unused_keys` flags every key this module owns, because they are all resolved
+# dynamically — `t(".title")` relative lookups, Decidim's workflow manifest, and
+# the form builder's `human_attribute_name`. `normalize` strips the comments out
+# of the locale files and hard-wraps every string at 80 columns. Both are
+# switched off in spec/i18n_spec.rb; missing keys is the one that catches a real
+# bug, namely a key present in en.yml and forgotten in de.yml.
+base_locale: en
+locales: [en, de]
+
+data:
+  read:
+    - config/locales/%{locale}.yml
+  write:
+    - config/locales/%{locale}.yml
+
+search:
+  paths:
+    - app/
+
+# Keys we deliberately borrow from decidim-core rather than define ourselves.
+ignore_missing:
+  - decidim.wizard_step_form.wizard_aside.back

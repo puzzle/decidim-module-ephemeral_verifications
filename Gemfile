@@ -7,6 +7,7 @@ source "https://rubygems.org"
 base_path = ""
 base_path = "../" if File.basename(__dir__) == "development_app"
 require_relative "#{base_path}lib/decidim/ephemeral_verifications/version"
+require_relative "#{base_path}database_defaults"
 
 # The point release the test suite runs against. The gem itself declares the
 # wider DECIDIM_VERSION range.
@@ -21,6 +22,11 @@ group :development, :test do
   gem "bootsnap", require: false
   gem "decidim-budgets", DECIDIM_VERSION
   gem "decidim-dev", DECIDIM_VERSION
+  # The generated app ships dummy_signature_handler.rb, which subclasses
+  # Decidim::Initiatives::SignatureHandler. Its test env sets
+  # `eager_load = ENV["CI"].present?`, so without this the app fails to boot on
+  # CI while working locally.
+  gem "decidim-initiatives", DECIDIM_VERSION
   gem "decidim-participatory_processes", DECIDIM_VERSION
   gem "decidim-proposals", DECIDIM_VERSION
 end

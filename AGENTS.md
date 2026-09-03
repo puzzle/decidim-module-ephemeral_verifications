@@ -33,10 +33,14 @@ bundle exec rspec path/to/spec.rb:12 # a single example
 bundle exec rubocop -a
 bundle exec rake development_app     # a real app to click through
 bundle exec rake overrides:checksums # accept upstream changes to copied files
-docker compose down                  # cleanup once you are done
+docker compose down                  # stop Postgres (add -v to discard the data)
 ```
 
-No database configuration is needed: `spec/database_defaults.rb` points the
+`rm -rf spec/decidim_dummy_app development_app` throws away the generated apps;
+both are gitignored and recreated by their rake tasks. `rspec` manages its own
+Puma and Chrome, so there is nothing else to shut down.
+
+No database configuration is needed: `database_defaults.rb` points the
 generated app at the compose service, and every value defers to the environment
 so CI can override it. `rake test_app` must be re-run after changing anything
 the generated app captures (the Gemfile, the Decidim version).
@@ -58,11 +62,19 @@ The flow is two steps, both in
    generation and the gateway call stay upstream's problem) takes a phone
    number, a required eligibility confirmation, and the terms of service. The
    SMS is sent *during validation*.
-2. `edit`/`update` — the core `ConfirmUserAuthorization` compares the code and
-   grants, then `resolve_duplicates` runs `Decidim::Verifications::AuthorizeUser`
-   with `TransferHandler`.
+2. `edit`/`update` — the code is checked against `CODE_VALID_FOR` and
+   `MAX_ATTEMPTS` **on the record** first, then the core
+   `ConfirmUserAuthorization` compares it and grants, then `resolve_duplicates`
+   runs `Decidim::Verifications::AuthorizeUser` with `TransferHandler`.
 
-### Four things that will bite you
+The three limits (`CODE_VALID_FOR`, `MAX_ATTEMPTS`, `RESEND_COOLDOWN`) are
+enforced here rather than delegated upstream, because Decidim counts failures in
+`session[:failed_attempts]` under a **cookie** session store — client-held state
+that a replayed cookie resets — and never reads the `code_sent_at` it stores.
+`workflow.renewable = false` for a related reason; see the risks section of
+`docs/writing-an-ephemeral-verification.md`.
+
+### Five things that will bite you
 
 These are not stylistic; each one was a bug found by running the code.
 
@@ -83,6 +95,12 @@ a returning participant out of a vote they already cast.
 the *other* participant's record onto this user, so `resolve_duplicates`
 destroys ours first when a duplicate exists.
 
+**Step one must resume, not refuse, when a pending record already exists.**
+`:create` is denied by `not_already_active?` the moment an ungranted
+authorization exists, so a second tab, a reload or a bookmarked URL would raise
+`ActionForbidden`, bounce to the root, and be sent straight back by the session
+checker. `new` redirects to the resume path instead.
+
 **`onboarding.authorization_path` must be set and then cleared.** Setting it is
 what makes step two reachable at all (once an ungranted authorization exists the
 action status is `:pending`, which drops this engine's paths out of
@@ -97,8 +115,47 @@ The controller and both views are adapted copies of Decidim files.
 `spec/lib/overrides_spec.rb` checksums their upstream originals against
 `spec/overrides.yml`; when Decidim changes one, that spec fails, which is the
 signal to review our copy. Regenerate with `rake overrides:checksums` **after**
-reviewing, never to silence it. Add a path to `Overrides.tracked_paths` when
-copying anything new.
+reviewing, never to silence it.
+
+`Overrides.tracked_paths` also covers files we do **not** copy but whose
+behaviour the flow rests on. The rule: track a file if and only if a documented
+assumption depends on it. A checksum cannot verify an assumption still holds —
+it guarantees a change to where the assumption lives fails a test rather than
+passing silently.
+
+#### Copy a view, or render a core partial?
+
+Our engine is `isolate_namespace Decidim::EphemeralVerifications::Sms`, but that
+does not scope view lookup — every engine prepends its `app/views` onto one
+global path set. What isolates us is the *prefix*: Rails builds `_prefixes` from
+`controller_path` up the superclass chain, and core's
+`decidim/verifications/sms/authorizations` is not in ours. So our two templates
+override nothing, nothing of Decidim's can render them, and we can never fall
+back to core's — which is why they must be complete files, and why a renamed
+template raises `MissingTemplate` instead of silently rendering core's
+non-ephemeral form.
+
+**Copy** a core view when its virtual path becomes ours and we need to change
+its structure. Restrict yourself to CSS classes that already appear under some
+`decidim-*` gem: a host app's `tailwind.config.js` `content:` list is generated
+from the bundled gems, so an app that added this gem without regenerating it
+does not scan our views, and a novel utility class is purged in production while
+working in `development_app`.
+
+**Render a core partial by absolute path** when we want the host's and Decidim's
+customisation of it. `decidim/verifications/authorizations/_tos_acceptance_field`
+is the one such case: it resolves through the global path set, so a host
+`app/views` copy or a `.deface` on that virtual path applies to our page. The
+price is that `MobilePhoneForm` requires the `tos_agreement` checkbox it
+renders — which is why the request specs assert `mobile_phone[tos_agreement]`
+is in the body. Keep that assertion whenever a core partial is rendered rather
+than copied.
+
+**Never deface a core view from this gem**; it would compete silently with the
+host app and every other module. And tell integrators that overriding
+`decidim/verifications/sms/authorizations/{new,edit}` does *not* affect this
+workflow — wording is better changed through `decidim-term_customizer`, which
+replaces the I18n backend and so reaches every key without touching a template.
 
 ## Testing notes
 
@@ -127,7 +184,27 @@ Recurring traps, all of which have produced false passes or false failures here:
   by the command's own `rescue StandardError`, and surface as that command's
   `:invalid` branch. Capture the result and act on it outside the block.
 - `Capybara.default_max_wait_time` is raised in `spec/spec_helper.rb`; Decidim
-  leaves the 2 second default, which is too tight for these pages.
+  leaves the 2 second default, which is too tight for these pages. For a single
+  unusually heavy example, decidim-dev also offers a `:slow` tag, which wraps it
+  in a 30 second wait.
+- **A browser query can outlive the document.** Every step of this flow is a
+  POST plus redirects, and a content or element query that is mid-flight when
+  Turbo swaps the document fails with `Node with given id does not belong to the
+  document`. Capybara retries stale-element errors but *not* this one, so it
+  propagates however long the wait is — raising the timeout does not help.
+  **After anything that navigates, assert on `have_current_path` first**: it
+  polls `current_url` and holds no node references, so it cannot trip, and once
+  the URL has settled the DOM is stable enough to assert content against. Where
+  there is no distinct URL to wait for, anchor on state rather than flash copy
+  (`have_no_css("#main-bar [data-close]")`, not a message that may be reworded).
+  This spec failed three different ways before that pattern was applied.
+- **`SEVERE ... 422 (Unprocessable Content)` lines in the output are expected.**
+  decidim-dev prints the browser console after every system example
+  (`config.after(type: :system) { warn ...logs.get(:browser) }`), and our
+  deliberate invalid-submission examples answer with 422, which Chrome logs as a
+  failed resource load. Nothing is wrong and there is no way to filter them from
+  our side; only be suspicious of a SEVERE line pointing at a URL or status the
+  specs do not intend.
 
 ## Conventions
 

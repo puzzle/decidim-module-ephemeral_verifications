@@ -44,7 +44,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
 
-    # Overrides spec/database_defaults.rb, which points at the port used by this
+    # Overrides database_defaults.rb, which points at the port used by this
     # repository's docker-compose.yml.
     env:
       DATABASE_HOST: localhost

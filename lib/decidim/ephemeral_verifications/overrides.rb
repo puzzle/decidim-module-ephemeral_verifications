@@ -35,6 +35,13 @@ module Decidim
         Pathname.new(__dir__).join("../../../spec/overrides.yml").expand_path
       end
 
+      # Track a file if and only if a documented assumption depends on it: the
+      # ones this module copies, and the ones whose behaviour the flow rests on.
+      # A checksum cannot verify an assumption still holds — it guarantees that
+      # a change to where the assumption lives fails a test instead of passing
+      # silently. Measured against Decidim's history this costs nothing day to
+      # day (none of these changed across any 0.31 patch release) and fires at
+      # minor upgrades, which is when it has to be re-read anyway.
       def self.tracked_paths
         %w(
           decidim-verifications:app/controllers/decidim/verifications/sms/authorizations_controller.rb
@@ -49,6 +56,12 @@ module Decidim
           decidim-verifications:app/commands/decidim/verifications/confirm_user_authorization.rb
           decidim-verifications:app/commands/decidim/verifications/perform_authorization_step.rb
           decidim-core:app/controllers/concerns/decidim/ephemeral_session_checker.rb
+          decidim-core:app/services/decidim/action_authorizer.rb
+          decidim-core:app/permissions/decidim/permissions.rb
+          decidim-core:app/models/decidim/authorization.rb
+          decidim-core:app/models/decidim/authorization_transfer.rb
+          decidim-verifications:app/services/decidim/authorization_handler.rb
+          decidim-verifications:app/controllers/concerns/decidim/verifications/renewable.rb
         ).freeze
       end
 

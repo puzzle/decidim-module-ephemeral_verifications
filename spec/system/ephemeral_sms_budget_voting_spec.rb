@@ -50,6 +50,7 @@ describe "Ephemeral SMS verification when voting on a budget project" do
     check :mobile_phone_tos_agreement
     click_on "Send me an SMS"
 
+    expect(page).to have_current_path(%r{/authorizations/edit}, url: true, ignore_query: true)
     expect(page).to have_content("Introduce the verification code you received")
     fill_in :confirmation_verification_code, with: sent_code
     click_on "Confirm"

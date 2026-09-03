@@ -156,6 +156,142 @@ describe "Ephemeral SMS authorizations" do
     end
   end
 
+  describe "the limits this module enforces itself" do
+    before { request_code }
+
+    # Upstream counts failures in session[:failed_attempts] under a cookie
+    # session store, so a replayed cookie resets it, and it never checks
+    # code_sent_at. Both have to hold on the record instead.
+    it "gives up on the code after repeated wrong guesses" do
+      code = sent_code
+
+      4.times { put collection_path, params: { confirmation: { verification_code: "000000" } } }
+      expect(Decidim::Authorization.where(name: "ephemeral_sms", user:)).not_to be_empty
+
+      put collection_path, params: { confirmation: { verification_code: "000000" } }
+      expect(Decidim::Authorization.where(name: "ephemeral_sms", user:)).to be_empty
+
+      # The real code is worthless now; a fresh one has to be requested.
+      put collection_path, params: { confirmation: { verification_code: code } }
+      expect(Decidim::Authorization.where(name: "ephemeral_sms", user:, granted_at: nil)).to be_empty
+    end
+
+    it "refuses a code that has gone stale" do
+      code = sent_code
+      travel_to(11.minutes.from_now) do
+        put collection_path, params: { confirmation: { verification_code: code } }
+      end
+
+      expect(Decidim::Authorization.where(name: "ephemeral_sms", user:)).to be_empty
+    end
+
+    it "still accepts the code inside the validity window" do
+      code = sent_code
+      travel_to(9.minutes.from_now) do
+        put collection_path, params: { confirmation: { verification_code: code } }
+      end
+
+      expect(authorization.reload).to be_granted
+    end
+
+    # Every resend is real money and a message to a third party. The reset link
+    # in the edit view is the path that matters: `create` is forbidden while a
+    # record is pending, so a resend loop runs destroy -> create.
+    it "will not reset the code immediately" do
+      expect { delete collection_path }.not_to change(Decidim::Authorization, :count)
+
+      expect(response).to redirect_to(%r{/ephemeral_sms/authorizations/edit})
+    end
+
+    it "allows a reset once the cooldown has passed" do
+      first = sent_code
+
+      travel_to(2.minutes.from_now) do
+        delete collection_path
+        request_code
+      end
+
+      expect(Decidim::Authorization.find_by(name: "ephemeral_sms", user:).verification_metadata["verification_code"]).not_to eq(first)
+    end
+  end
+
+  describe "returning to step one while a code is pending" do
+    before { request_code }
+
+    # `:create` is denied by not_already_active? once a record exists, so
+    # without the resume guard this 403s, bounces to the root, and comes back.
+    it "resumes instead of refusing" do
+      get new_path
+
+      expect(response).to redirect_to(%r{/ephemeral_sms/authorizations/edit})
+    end
+
+    it "does not loop when the engine root is opened again" do
+      get "/ephemeral_sms/"
+
+      5.times do
+        break unless response.status == 302
+
+        follow_redirect!
+      end
+
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  describe "when the authorization cannot be resolved" do
+    let(:earlier_user) { create(:user, :ephemeral, :confirmed, organization:) }
+    let!(:earlier_authorization) do
+      create(
+        :authorization,
+        :granted,
+        user: earlier_user,
+        name: "ephemeral_sms",
+        unique_id: Decidim::EphemeralVerifications::Sms::MobilePhoneForm
+                     .from_params({ mobile_phone_number: phone }, user:).unique_id
+      )
+    end
+    let(:user) { create(:user, :confirmed, organization:) }
+
+    around do |example|
+      Decidim::AuthorizationTransfer.disable!
+      example.run
+      Decidim::AuthorizationTransfer.enable!
+    end
+
+    # AuthorizeUser broadcasts :invalid here. The participant must not be left
+    # bouncing between this engine and the root.
+    it "sends the participant somewhere real rather than deadlocking" do
+      request_code
+      put collection_path, params: { confirmation: { verification_code: sent_code } }
+
+      5.times do
+        break unless response.status == 302
+
+        follow_redirect!
+      end
+
+      expect(response).to have_http_status(:ok)
+    end
+  end
+
+  describe "mass assignment" do
+    # from_params merges the nested hash over the top level, so passing the user
+    # inside params would let this displace current_user and forge the terms gate.
+    it "cannot displace the current user through nested params" do
+      post collection_path, params: {
+        mobile_phone: {
+          mobile_phone_number: phone,
+          eligible_confirmation: "1",
+          user: { extended_data: { ephemeral: true }, accepted_tos_version: Time.current }
+        }
+      }
+
+      expect(response).to have_http_status(:unprocessable_entity)
+      expect(Decidim::Authorization.where(name: "ephemeral_sms")).to be_empty
+    end
+  end
+
   describe "a returning participant with the same phone number" do
     let(:earlier_user) { create(:user, :ephemeral, :confirmed, organization:) }
     let!(:earlier_authorization) do

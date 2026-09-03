@@ -132,6 +132,14 @@ Where to read each, under `$(bundle show decidim-verifications)` and
 | 3 | `app/models/decidim/authorization_transfer.rb` plus the unique index on `decidim_authorizations` |
 | 4 | `app/services/decidim/authorization_handler.rb` (`ephemeral_tos_pending?`) |
 
+Two more this module works around rather than depends on. If upstream fixes
+either, delete our workaround rather than carrying it:
+
+| What | Where | Our workaround |
+|---|---|---|
+| Failure counting lives in `session[:failed_attempts]` under a cookie store, and `code_sent_at` is never read | `app/commands/decidim/verifications/confirm_user_authorization.rb`, `app/forms/decidim/verifications/sms/mobile_phone_form.rb` | `CODE_VALID_FOR`, `MAX_ATTEMPTS` and `RESEND_COOLDOWN` enforced on the record in our controller |
+| `workflow.renewable` defaults to true, publishing a destructive GET that can free a phone number for a second vote | `lib/decidim/verifications/workflow_manifest.rb`, `app/controllers/concerns/decidim/verifications/renewable.rb` | `workflow.renewable = false` in our engine |
+
 Also re-check `lib/decidim/verifications/workflow_manifest.rb` for new
 attributes worth setting, confirm `lib/decidim/verifications/adapter.rb` still
 resolves engines via `send("decidim_#{name}")` and still demands
