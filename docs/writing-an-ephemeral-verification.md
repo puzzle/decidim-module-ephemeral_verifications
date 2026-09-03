@@ -1,10 +1,11 @@
 # Writing an ephemeral verification for Decidim
 
 Decidim 0.31 lets a participant verify themselves and complete one action
-without registering. The admin documentation describes the feature as if it
-could be switched on in the system panel; it cannot. Decidim ships the
-machinery and no concrete verification method, so every installation that wants
-this has to supply one in code.
+without registering. The
+[decidim documentation](https://docs.decidim.org/en/v0.31/admin/participants/authorizations/ephemeral_verifications#_configuration)
+describes the feature as if it could be switched on in the system panel; it
+cannot. Decidim ships the machinery and no concrete verification method, so
+every installation that wants this has to supply one in code.
 
 This document is what we had to reconstruct from the Decidim source in order to
 build one. It is written to be useful outside this module, and everything in it
@@ -38,7 +39,7 @@ settings manifest.
 `promote_authorization_validation_errors` are **not** verification manifest
 attributes — they belong to `Decidim::Initiatives::SignatureWorkflowManifest`,
 which is a different feature with its own ephemeral flow. Searching the
-codebase for "ephemeral" turns them up first and they are a reliable source of
+codebase for "ephemeral" turns them up first and they are a possible source of
 confusion.
 
 Two traps live here:

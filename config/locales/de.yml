@@ -9,9 +9,9 @@ de:
       admin:
         ephemeral_sms:
           help:
-            - Teilnehmende fordern einen Verifizierungscode an, der an ihr Telefon gesendet wird.
+            - Teilnehmende fordern einen Verifizierungscode an, der an Ihr Telefon gesendet wird.
             - Sie bestätigen ihre Teilnahmeberechtigung und geben den Code ein, um verifiziert zu werden.
-            - Sie benötigen kein Konto und können ihre Sitzung später mit derselben Telefonnummer wiederherstellen.
+            - Sie benötigen kein Konto und können Ihre Sitzung später mit derselben Telefonnummer wiederherstellen.
       ephemeral_sms:
         explanation: Verifizierung mit einem per SMS zugesandten Code, ohne Konto.
         fields:
@@ -39,4 +39,4 @@ de:
             conflict: Diese Telefonnummer wurde bereits von einer anderen Person verifiziert. Bitte kontaktieren Sie uns, falls dies unerwartet ist.
             error: Ihr Verifizierungscode stimmt nicht mit unserem überein. Bitte überprüfen Sie die SMS, die wir Ihnen gesendet haben.
             success: Herzlichen Glückwunsch. Sie wurden erfolgreich verifiziert.
-            transferred: Ihre frühere Teilnahme wurde auf dieses Konto übertragen.
+            transferred: Sie haben jetzt wieder Zugriff auf Ihre frühere Teilnahme.

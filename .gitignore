@@ -7,3 +7,4 @@ Gemfile.lock
 node_modules
 coverage
 .rspec-failures
+.idea

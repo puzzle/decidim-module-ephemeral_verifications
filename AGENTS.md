@@ -33,6 +33,7 @@ bundle exec rspec path/to/spec.rb:12 # a single example
 bundle exec rubocop -a
 bundle exec rake development_app     # a real app to click through
 bundle exec rake overrides:checksums # accept upstream changes to copied files
+docker compose down                  # cleanup once you are done
 ```
 
 No database configuration is needed: `spec/database_defaults.rb` points the

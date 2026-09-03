@@ -45,8 +45,7 @@ The first two are deliberately different: the gemspec declares a window, the
 Gemfile pins one version.
 
 **Three files carry a Ruby version and they must agree with the new Decidim's
-own requirement** — read it rather than assuming, because ours has been wrong
-before:
+own requirement** — read it rather than assuming:
 
 ```bash
 ruby -e 'g=Gem::Specification.load(ARGV[0]); puts g.required_ruby_version' \

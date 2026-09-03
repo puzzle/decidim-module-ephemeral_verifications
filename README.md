@@ -5,8 +5,9 @@ participatory budget, supporting a proposal, answering a survey — **without
 creating an account**.
 
 Decidim 0.31 introduced the machinery for this ("ephemeral verifications"), but
-it ships no concrete verification method: the admin documentation implies the
-feature can be switched on in the system panel, and it cannot. Every
+it ships no concrete verification method: the
+[decidim documentation](https://docs.decidim.org/en/v0.31/admin/participants/authorizations/ephemeral_verifications#_configuration)
+implies the feature can be switched on in the system panel, and it cannot. Every
 installation has to supply a workflow in code. This module supplies one, based
 on SMS.
 
@@ -32,13 +33,16 @@ It also handles what Decidim's multistep verification path leaves out:
   with it* transferred to their account.
 - **Terms of service.** Recorded for ephemeral participants, as Decidim expects.
 
-## Requirements
+## What you need to bring yourself
 
 - Decidim `>= 0.31.0, < 0.32`
 - An SMS gateway configured as `Decidim.sms_gateway_service`. Any class matching
   Decidim's gateway contract works — `new(phone_number, code, context)` plus
   `#deliver_code` — so this module carries no gateway of its own. See
   [the Decidim SMS docs](https://docs.decidim.org/en/develop/services/sms).
+- Other types of verification are not implemented yet. If you want to implement
+  one, see the [docs](docs/writing-an-ephemeral-verification.md) in this module.
+  Contributions are welcome.
 
 ## Installation
 
@@ -127,4 +131,4 @@ It documents the parts of Decidim that are not documented upstream.
 
 ## License
 
-AGPL-3.0. See [LICENSE-AGPLv3.txt](LICENSE-AGPLv3.txt).
+AGPL-3.0. See [LICENSE.txt](LICENSE.txt).

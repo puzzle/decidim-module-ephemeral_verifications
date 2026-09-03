@@ -41,4 +41,4 @@ en:
             conflict: This phone number is already verified by another participant. Please contact us if this is unexpected.
             error: Your verification code does not match ours. Please double-check the SMS we sent you.
             success: Congratulations. You have been successfully verified.
-            transferred: Your previous participation has been transferred to this account.
+            transferred: You now have access to your previous participation.

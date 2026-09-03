@@ -4,8 +4,6 @@ module Decidim
   module EphemeralVerifications
     module Sms
       # Adapted from `Decidim::Verifications::Sms::AuthorizationsController`.
-      # `spec/lib/overrides_spec.rb` fails when that upstream file changes, so
-      # the divergence cannot go unnoticed across a Decidim upgrade.
       #
       # The differences from upstream are: the i18n scope, the workflow name,
       # remembering the authorization path (see `remember_authorization_path`)
