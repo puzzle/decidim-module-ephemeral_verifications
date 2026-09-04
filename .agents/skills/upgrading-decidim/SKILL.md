@@ -57,6 +57,13 @@ cat "$(bundle show decidim)/.node-version"   # and "engines" in its package.json
 - `.rubocop.yml` → `TargetRubyVersion`
 - `.github/workflows/ci.yml` → `RUBY_VERSION` and `NODE_VERSION`
 
+**Also check the image processor.** CI installs ImageMagick because Decidim
+0.31 processes ActiveStorage variants with `mini_magick`, and every component
+view resolves the organization's meta image inline while rendering. Decidim
+0.32 switches to `vips`, so that step becomes
+`apt-get install -y libvips` — read Decidim's own `Gemfile`/CI for the version
+you are moving to rather than assuming.
+
 ```bash
 bundle update decidim
 ```
