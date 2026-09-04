@@ -7,8 +7,8 @@ module Decidim
   module EphemeralVerifications
     module Sms
       # Two-step SMS verification that participants can complete without an
-      # account. See docs/writing-an-ephemeral-verification.md for how the
-      # surrounding Decidim machinery works.
+      # account. See docs/how-ephemeral-verifications-work.md for the
+      # surrounding Decidim machinery.
       class Engine < ::Rails::Engine
         isolate_namespace Decidim::EphemeralVerifications::Sms
 

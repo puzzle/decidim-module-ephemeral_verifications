@@ -13,8 +13,9 @@ from their originals, and the four undocumented Decidim behaviours the flow
 depends on. `spec/lib/overrides_spec.rb` catches the first automatically. The
 second needs a human decision every time.
 
-**REQUIRED BACKGROUND:** read `docs/writing-an-ephemeral-verification.md` before
-changing the controller. `AGENTS.md` lists the traps.
+**REQUIRED BACKGROUND:** read `docs/how-ephemeral-verifications-work.md` and
+`docs/writing-an-ephemeral-verification.md` before changing the controller.
+`AGENTS.md` lists the traps.
 
 ## First: is the module still needed?
 
@@ -187,8 +188,10 @@ Several files hardcode the version in prose:
 - `README.md` — the requirements section, and the opening paragraph's claim
   about what Decidim does and does not ship
 - `AGENTS.md` — the same claim
-- `docs/writing-an-ephemeral-verification.md` — states which version it is
-  verifiable against; re-check its assertions, do not just bump the number
+- `docs/how-ephemeral-verifications-work.md` and
+  `docs/writing-an-ephemeral-verification.md` — both state which version they
+  are verifiable against; re-check their assertions, do not just bump the
+  number
 
 ## Common mistakes
 

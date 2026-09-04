@@ -41,7 +41,7 @@ It also handles what Decidim's multistep verification path leaves out:
   `#deliver_code` — so this module carries no gateway of its own. See
   [the Decidim SMS docs](https://docs.decidim.org/en/develop/services/sms).
 - Other types of verification are not implemented yet. If you want to implement
-  one, see the [docs](docs/writing-an-ephemeral-verification.md) in this module.
+  one, see [the docs](docs/writing-an-ephemeral-verification.md) in this module.
   Contributions are welcome.
 
 ## Installation
@@ -139,9 +139,11 @@ The two generated apps are gitignored and disposable — `rake test_app` and
 
 ## How it works
 
-If you want to build your own ephemeral verification, or maintain this one, read
-[docs/writing-an-ephemeral-verification.md](docs/writing-an-ephemeral-verification.md).
-It documents the parts of Decidim that are not documented upstream.
+Two documents cover the parts of Decidim that are not documented upstream:
+[docs/how-ephemeral-verifications-work.md](docs/how-ephemeral-verifications-work.md)
+explains the machinery Decidim provides, and
+[docs/writing-an-ephemeral-verification.md](docs/writing-an-ephemeral-verification.md)
+is a guide to building a workflow of your own — or maintaining this one.
 
 ## License
 

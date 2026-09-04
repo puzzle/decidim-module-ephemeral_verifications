@@ -12,10 +12,12 @@ creating an account.
 Decidim 0.31 ships the ephemeral *machinery* but no concrete verification
 method — the admin documentation implies it is a system-panel toggle, and it is
 not. Everything interesting about this module is in how it fits around Decidim's
-undocumented behaviour, which is written up in
-[docs/writing-an-ephemeral-verification.md](docs/writing-an-ephemeral-verification.md).
-**Read that document before changing the controller** and update it when relevant
-changes are made to this module.
+undocumented behaviour, which is written up in two documents:
+[docs/how-ephemeral-verifications-work.md](docs/how-ephemeral-verifications-work.md)
+for Decidim's own machinery, and
+[docs/writing-an-ephemeral-verification.md](docs/writing-an-ephemeral-verification.md)
+for what a workflow has to implement. **Read both before changing the
+controller** and update them when relevant changes are made to this module.
 
 When a new Decidim version is released, follow the `upgrading-decidim` skill in
 `.agents/skills/` — it covers the version declarations, the copy-drift guard and
@@ -69,8 +71,8 @@ enforced here rather than delegated upstream, because Decidim counts failures in
 — and outright holds, since `decidim_core.session_store` configures a **cookie**
 store unless the host app sets one — and never reads the `code_sent_at` it
 stores.
-`workflow.renewable = false` for a related reason; see steps 2 and 9 of part II
-of `docs/writing-an-ephemeral-verification.md`.
+`workflow.renewable = false` for a related reason; see steps 2 and 9 of
+`docs/writing-an-ephemeral-verification.md`.
 
 ### Five things that will bite you
 
