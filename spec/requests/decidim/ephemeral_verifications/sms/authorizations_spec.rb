@@ -215,6 +215,21 @@ describe "Ephemeral SMS authorizations" do
     end
   end
 
+  describe "renewal" do
+    before do
+      request_code
+      put collection_path, params: { confirmation: { verification_code: sent_code } }
+    end
+
+    # `renewable` is deliberately false: renewal is a destructive GET, and a
+    # participant holding a transferred authorization could otherwise free the
+    # phone number and let a second vote be cast with it.
+    it "is not offered for a granted authorization" do
+      expect(authorization.reload).to be_granted
+      expect(authorization).not_to be_renewable
+    end
+  end
+
   describe "returning to step one while a code is pending" do
     before { request_code }
 

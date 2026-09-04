@@ -13,14 +13,12 @@ module Decidim
         isolate_namespace Decidim::EphemeralVerifications::Sms
 
         # `Decidim::Verifications::Adapter` looks up `edit_authorization_path`
-        # and `renew_authorization_path` by name (with `respond_to?`) and
-        # raises `MissingVerificationRoute` when they are absent. A singular
+        # by name (with `respond_to?`) for every pending authorization and
+        # raises `MissingVerificationRoute` when it is absent. A singular
         # `resource` declared `as: :authorization` is what produces exactly
-        # those helper names.
+        # that helper name.
         routes do
-          resource :authorizations, only: [:new, :create, :edit, :update, :destroy], as: :authorization do
-            get :renew, on: :collection
-          end
+          resource :authorizations, only: [:new, :create, :edit, :update, :destroy], as: :authorization
 
           root to: "authorizations#new"
         end

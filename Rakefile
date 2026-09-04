@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+ENV["DISABLE_SPRING"] ||= "1"
+
 require "decidim/dev/common_rake"
 
 desc "Generates a dummy app for testing"
@@ -8,6 +10,8 @@ task test_app: "decidim:generate_external_test_app"
 desc "Generates a development app"
 task :development_app do
   Bundler.with_original_env do
+    ENV["DISABLE_SPRING"] ||= "1"
+
     generate_decidim_app(
       "development_app",
       "--app_name", "#{base_app_name}_development_app",

@@ -6,9 +6,9 @@ module Decidim
       # Adapted from `Decidim::Verifications::Sms::AuthorizationsController`.
       #
       # The differences from upstream are: the i18n scope, the workflow name,
-      # remembering the authorization path (see `remember_authorization_path`)
-      # and resolving duplicates once the code is confirmed (see
-      # `resolve_duplicates`).
+      # remembering the authorization path (see `remember_authorization_path`),
+      # resolving duplicates once the code is confirmed (see
+      # `resolve_duplicates`) and no renewal.
       class AuthorizationsController < Decidim::Verifications::ApplicationController
         I18N_SCOPE = "decidim.ephemeral_verifications.sms"
 
@@ -19,7 +19,6 @@ module Decidim
         MAX_ATTEMPTS = 5
         RESEND_COOLDOWN = 1.minute
 
-        include Decidim::Verifications::Renewable
         include Decidim::HtmlSafeFlash
 
         before_action :remember_authorization_path
@@ -209,11 +208,11 @@ module Decidim
           decidim_verifications.authorizations_path
         end
 
-        # Upstream's confirmation form is reused as is: it holds nothing but
-        # the code, and it is deliberately built without a user so the
-        # inherited terms of service validation stays out of the way.
+        # Built without a user on purpose: `AuthorizationHandler` validates
+        # `tos_agreement` only when `ephemeral_tos_pending?`, which needs a
+        # user, and the terms were already accepted and recorded in step one.
         def confirmation_form
-          Decidim::Verifications::Sms::ConfirmationForm.from_params(params.slice(:confirmation))
+          ConfirmationForm.from_params(params.slice(:confirmation))
         end
 
         # Without this an ephemeral participant deadlocks between the two

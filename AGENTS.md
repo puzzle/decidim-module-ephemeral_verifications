@@ -58,17 +58,19 @@ The flow is two steps, both in
    generation and the gateway call stay upstream's problem) takes a phone
    number, a required eligibility confirmation, and the terms of service. The
    SMS is sent *during validation*.
-2. `edit`/`update` — the code is checked against `CODE_VALID_FOR` and
+2. `edit`/`update` — `ConfirmationForm` carries the code; it is checked against `CODE_VALID_FOR` and
    `MAX_ATTEMPTS` **on the record** first, then the core
    `ConfirmUserAuthorization` compares it and grants, then `resolve_duplicates`
    runs `Decidim::Verifications::AuthorizeUser` with `TransferHandler`.
 
 The three limits (`CODE_VALID_FOR`, `MAX_ATTEMPTS`, `RESEND_COOLDOWN`) are
 enforced here rather than delegated upstream, because Decidim counts failures in
-`session[:failed_attempts]` under a **cookie** session store — client-held state
-that a replayed cookie resets — and never reads the `code_sent_at` it stores.
-`workflow.renewable = false` for a related reason; see the risks section of
-`docs/writing-an-ephemeral-verification.md`.
+`session[:failed_attempts]`, which the client can reset by dropping the session
+— and outright holds, since `decidim_core.session_store` configures a **cookie**
+store unless the host app sets one — and never reads the `code_sent_at` it
+stores.
+`workflow.renewable = false` for a related reason; see steps 2 and 9 of part II
+of `docs/writing-an-ephemeral-verification.md`.
 
 ### Five things that will bite you
 
@@ -209,13 +211,14 @@ The workflow name `ephemeral_sms` is simultaneously the mount path, the
 i18n key root. **It cannot change once authorizations exist** —
 `Decidim::Authorization` validates that a workflow of its name is registered.
 
-Register from an engine `initializer`, never `config.to_prepare`, and never
-guard on host-application configuration: engine initializers run *before* the
-application's `config/initializers`.
+Register from an engine `initializer`, and never guard on host-application
+configuration: engine initializers run *before* the application's
+`config/initializers`.
 
 Keep every route under the engine's mount point, and keep
-`edit_authorization_path` and `renew_authorization_path` defined — the Adapter
-looks them up by name and raises otherwise.
+`edit_authorization_path` defined — the Adapter looks it up by name for every
+pending authorization and raises otherwise. In workflows that don't explicitely
+disable `renewable`, the same holds for the renew path.
 
 Nothing installation-specific belongs in the gem. The eligibility confirmation
 ships generic wording and is meant to be overridden per organization through
