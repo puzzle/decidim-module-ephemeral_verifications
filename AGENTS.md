@@ -226,3 +226,8 @@ Nothing installation-specific belongs in the gem. The eligibility confirmation
 ships generic wording and is meant to be overridden per organization through
 `decidim-term_customizer`; checkbox labels are rendered as HTML by Decidim's
 form builder, so a link works.
+
+Renovate keeps the GitHub Actions and the development gems current, and
+automerges their patch and minor updates. It is deliberately blind to Decidim,
+to Ruby and to Postgres — those move together, on a feature branch, following
+the `upgrading-decidim` skill.
