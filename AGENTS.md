@@ -33,12 +33,8 @@ bundle exec rspec path/to/spec.rb:12 # a single example
 bundle exec rubocop -a
 bundle exec rake development_app     # a real app to click through
 bundle exec rake overrides:checksums # accept upstream changes to copied files
-docker compose down                  # stop Postgres (add -v to discard the data)
+docker compose down                  # once you are done, stop Postgres (add -v to discard the data)
 ```
-
-`rm -rf spec/decidim_dummy_app development_app` throws away the generated apps;
-both are gitignored and recreated by their rake tasks. `rspec` manages its own
-Puma and Chrome, so there is nothing else to shut down.
 
 No database configuration is needed: `database_defaults.rb` points the
 generated app at the compose service, and every value defers to the environment

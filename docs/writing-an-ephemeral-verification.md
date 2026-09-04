@@ -7,9 +7,8 @@ describes the feature as if it could be switched on in the system panel; it
 cannot. Decidim ships the machinery and no concrete verification method, so
 every installation that wants this has to supply one in code.
 
-This document is what we had to reconstruct from the Decidim source in order to
-build one. It is written to be useful outside this module, and everything in it
-is verifiable against Decidim 0.31.
+This is a guide to building one. It is written to be useful outside this module,
+and every claim is verifiable against Decidim 0.31.
 
 Read it in order. Section 1 is the decision that shapes everything else,
 section 2 is the machinery you register into, section 3 is what Decidim does at
@@ -58,7 +57,7 @@ return broadcast(:invalid) unless set_tos_agreement
 **A multistep workflow gets none of that.** If you build one, you must supply
 it yourself.
 
-### Why this module is multistep anyway
+### Worked example: why SMS forces multistep
 
 SMS cannot fit the direct shape, because the code does not exist until the
 phone number has been submitted. Core's `MobilePhoneForm` shows the dependency
@@ -119,10 +118,45 @@ manifest raises at boot) and adds it to a `Set`.
 | `Decidim.authorization_engines` | `select(&:engine)` — the *multistep* ones |
 | `Decidim.authorization_admin_engines` | those with an `admin_engine` |
 
-The manifest's whole attribute set is: `name`, `form`, `engine`,
-`admin_engine`, `expires_in`, `renewable`, `time_between_renewals`,
-`action_authorizer`, `metadata_cell`, `icon`, `ephemeral`, and an `options`
-settings manifest.
+Registering looks like this. Everything else in this guide is about getting the
+two flags at the top right:
+
+```ruby
+Decidim::Verifications.register_workflow(:my_verification) do |workflow|
+  workflow.ephemeral = true
+  workflow.renewable = false
+
+  workflow.engine = MyModule::Verification::Engine  # or: workflow.form = "MyHandler"
+  workflow.icon = "message-3-line"
+end
+```
+
+**`ephemeral`** (default `false`) is what opts the workflow into everything in
+sections 3 and 4. Without it the workflow behaves like any other verification
+and a visitor must register first.
+
+**`renewable`** defaults to **`true`**, and for an ephemeral workflow that
+default is usually wrong. It publishes `GET <engine>/authorizations/renew`,
+wired straight to `DestroyUserAuthorization`, so a granted authorization gains a
+self-destruct URL once `time_between_renewals` has passed — reachable by
+prefetch or an `<img src>`, since it is a GET. Decide it like this:
+
+- **`false`** if the thing you verify is a scarce identity that must not be
+  recycled. A phone number is: a participant who received a *transferred*
+  authorization could otherwise destroy it, free the number, and let a second
+  authorization be granted for it — one phone, two votes. Setting it false makes
+  `Authorization#renewable?` false, which also denies the `:renew` permission,
+  so the route can stay declared and inert.
+- **`true`** only if re-verifying is genuinely something participants should be
+  able to do, and re-verifying cannot buy anything. Then you also owe i18n keys
+  for every attribute you store, because the renew modal renders them through
+  `AuthorizationMetadataCell`.
+
+The other attributes — `name`, `form`, `engine`, `admin_engine`, `expires_in`,
+`time_between_renewals`, `action_authorizer`, `metadata_cell`, `icon` and an
+`options` settings manifest — are the same for ephemeral and ordinary
+workflows; read `lib/decidim/verifications/workflow_manifest.rb` for the
+current set rather than trusting a list here.
 
 `authorization_handler_form`, `save_authorizations` and
 `promote_authorization_validation_errors` are **not** verification manifest
@@ -347,13 +381,13 @@ exactly this reason, and `#clear_authorization_path` resets it afterwards.
 This is also the one place where keeping every route under the engine's mount
 point pays off: a single prefix entry covers the entire flow.
 
-## 5. Risks you have to handle yourself
+## 5. Limits you have to add yourself
 
-Decidim's ephemeral flow removes the account barrier. Everything an account
-used to imply — that someone confirmed an email, that a request is attributable,
-that a rate limit has a subject — stops being true, and the pieces upstream
-provides do not fill the gap. These are the ones we found by attacking our own
-implementation.
+Decidim's ephemeral flow removes the account barrier. Everything an account used
+to imply — that someone confirmed an email, that a request is attributable, that
+a rate limit has a subject — stops being true, and the pieces upstream provides
+do not fill the gap. Whatever your verification costs to attempt, assume an
+unauthenticated visitor will attempt it in a loop.
 
 ### An unauthenticated visitor spends your SMS budget
 
@@ -392,22 +426,6 @@ Enforce both server-side, on the record rather than in the session: reject a
 code older than a few minutes, count attempts in `verification_metadata`, and
 destroy the record once the count is exceeded so a fresh code is required.
 
-### Renewal is a destructive GET, and it can buy a second vote
-
-`workflow.renewable` defaults to **true**. That publishes
-`GET <engine>/authorizations/renew`, which `Decidim::Verifications::Renewable`
-wires straight to `DestroyUserAuthorization`. Two consequences: a destructive
-action behind a GET is reachable by prefetch or an `<img src>`, and — worse —
-a participant who received a *transferred* authorization can destroy it, freeing
-the phone number so a second authorization can be granted for it. One phone,
-two votes.
-
-Set `workflow.renewable = false` unless renewal genuinely makes sense for your
-verification. The route can stay: `Authorization#renewable?` then returns false,
-which also denies the `:renew` permission. Leaving it enabled also exposes a
-`renew_modal` that renders your metadata keys, so you would need i18n entries
-for every attribute you store.
-
 ### What the test suite can and cannot tell you
 
 The four assumptions in sections 3 and 4 are not verifiable by a test: they are
@@ -429,27 +447,30 @@ have to look anyway.
 
 1. Pick a workflow name that cannot collide, and never change it once
    authorizations exist.
-2. Register from a Rails engine `initializer` block, not `config.to_prepare`.
+2. Set `renewable = false` unless re-verifying is both wanted and harmless
+   (section 2), and add the two limits from section 5 — neither is optional for
+   a workflow an unauthenticated visitor can reach.
+3. Register from a Rails engine `initializer` block, not `config.to_prepare`.
    Do not guard on host-app configuration: engine initializers run *before* the
    application's `config/initializers`.
-3. Make `handler_name` equal the workflow name.
-4. Return a stable `unique_id`, or session recovery and account transfer
+4. Make `handler_name` equal the workflow name.
+5. Return a stable `unique_id`, or session recovery and account transfer
    silently do not work.
-5. Declare `edit_authorization_path` and `renew_authorization_path`.
-6. Keep every route under the engine's mount point, and store
+6. Declare `edit_authorization_path` and `renew_authorization_path`.
+7. Keep every route under the engine's mount point, and store
    `onboarding.authorization_path` (section 4).
-7. Supply `AuthorizeUser`'s behaviour yourself if you are multistep, after
+8. Supply `AuthorizeUser`'s behaviour yourself if you are multistep, after
    confirming the participant's proof (section 3).
-8. Add `decidim.authorization_handlers.<name>.{name,explanation,fields.*}` and
+9. Add `decidim.authorization_handlers.<name>.{name,explanation,fields.*}` and
    `decidim.authorization_handlers.admin.<name>.help`. Without `name` your
    workflow shows up as a humanised key.
-9. Ship a `decidim:verifications:revoke:<name>` rake task: the auto-generated
+10. Ship a `decidim:verifications:revoke:<name>` rake task: the auto-generated
    one never materialises, because rake files load before the initializers that
    register workflows (decidim#16546).
-10. Tell administrators that adding your ephemeral workflow to a component's
+11. Tell administrators that adding your ephemeral workflow to a component's
     permissions, or changing its options, revokes every granted authorization
     of that name across the organization — `UpdateComponentPermissions`
     calls `RevokeByNameAuthorizations` on purpose.
-11. Remember that registered participants reach your ephemeral workflow too, so
+12. Remember that registered participants reach your ephemeral workflow too, so
     anything you must ask *everyone* cannot ride on `tos_agreement`, which is
     only shown when `user.ephemeral? && !user.tos_accepted?`.
