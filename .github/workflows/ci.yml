@@ -73,7 +73,7 @@ jobs:
         working-directory: ./spec/decidim_dummy_app
 
       # System specs drive a real browser.
-      - uses: nanasess/setup-chromedriver@v2
+      - uses: nanasess/setup-chromedriver@v3
       - run: mkdir -p ./spec/decidim_dummy_app/tmp/screenshots
 
       - name: Run the specs
