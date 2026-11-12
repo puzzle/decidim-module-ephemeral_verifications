@@ -18,6 +18,9 @@ module Decidim
         let!(:other_number) { authorization_for("0791234599") }
         let!(:canonical) { authorization_for("+41791234500") }
         let!(:outside_range) { authorization_for("+41761234567") }
+        # An abandoned attempt: step one tolerates duplicates, so these are
+        # common, and they hold no vote.
+        let!(:abandoned) { create(:authorization, :pending, user: ephemeral_user, name: "ephemeral_sms", unique_id: PhoneNumber.digest("0791234567")) }
         let(:organization) { create(:organization) }
 
         def ephemeral_user
@@ -35,9 +38,10 @@ module Decidim
           expect(audit.legacy_matches.map(&:authorization_id)).to contain_exactly(national.id, with_zeros.id, other_number.id)
         end
 
-        it "reports the numbers verified by more than one participant" do
+        it "reports the numbers verified by more than one participant, ignoring abandoned attempts" do
           expect(audit.collisions.keys).to eq(["+41791234567"])
           expect(audit.collisions["+41791234567"]).to contain_exactly(national, international, with_zeros)
+          expect(audit.matches.map(&:authorization_id)).not_to include(abandoned.id)
         end
 
         it "masks the numbers unless told otherwise" do

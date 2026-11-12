@@ -90,7 +90,11 @@ participant's session to anyone who types their phone number.
 
 **Duplicates must be tolerated in step one and resolved in step two.**
 `unique?` is overridden to return true. Rejecting in step one is what hard-locks
-a returning participant out of a vote they already cast.
+a returning participant out of a vote they already cast. And because tolerating
+them leaves pending records of abandoned attempts around, `TransferHandler`
+narrows Decidim's `duplicate` lookup to granted records: the upstream `find_by`
+takes whichever row comes first, and adopting a pending one leaves the real
+voter's record unmerged — a second vote with the identical number.
 
 **A granted authorization has to make way before a transfer.**
 `[decidim_user_id, name]` is unique and `AuthorizationTransfer.perform!` moves

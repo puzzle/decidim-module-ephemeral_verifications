@@ -8,7 +8,7 @@ module Decidim
     module Sms
       # Finds the `ephemeral_sms` authorizations granted before phone numbers
       # were normalised, and the participants who verified more than once by
-      # spelling the same number differently.
+      # spelling the same number differently. Pending records are left out.
       #
       # Nothing but the salted hash of the spelling is stored, so the only way
       # back to the number is forward: enumerate a mobile numbering range,
@@ -79,8 +79,12 @@ module Decidim
         def run
           raise ArgumentError, "give either numbers or prefixes and digits" unless numbers || (prefixes.any? && digits)
 
-          @index = Decidim::Authorization.where(name: WORKFLOW_NAME).pluck(:unique_id, :id).group_by(&:first).transform_values { |pairs| pairs.map(&:last) }
-          output.puts "#{@index.values.sum(&:size)} #{WORKFLOW_NAME} authorizations, #{scope}..."
+          # Granted records only: a pending one is an abandoned attempt (step
+          # one tolerates duplicates, so there are many), holds no vote and is
+          # nothing to rekey.
+          @index = Decidim::Authorization.where(name: WORKFLOW_NAME).where.not(granted_at: nil)
+                                         .pluck(:unique_id, :id).group_by(&:first).transform_values { |pairs| pairs.map(&:last) }
+          output.puts "#{@index.values.sum(&:size)} granted #{WORKFLOW_NAME} authorizations, #{scope}..."
 
           plan # load the numbering plan once, in the parent, not in every worker
           @matches = scan
@@ -241,8 +245,7 @@ module Decidim
         def describe(authorization)
           user = authorization.user
           kind = [user.ephemeral? ? "ephemeral" : "registered", ("deleted" if user.deleted?)].compact.join(", ")
-          state = authorization.granted? ? "granted #{authorization.granted_at.to_date}" : "pending"
-          "authorization #{authorization.id}  user #{user.id} (#{kind})  #{state}  #{activity(user)}"
+          "authorization #{authorization.id}  user #{user.id} (#{kind})  granted #{authorization.granted_at.to_date}  #{activity(user)}"
         end
 
         # What the participant did with the verification, so a double vote can
