@@ -119,7 +119,7 @@ COUNTRY=CH PREFIXES=76,77,78,79 DIGITS=7 PROCESSES=4 OUTPUT=audit.json \
 for Swiss mobiles. If the SMS gateway can export the numbers it delivered
 to, `NUMBERS=sent.json` (a JSON file; every string in it that is a phone
 number counts) checks just those instead and takes seconds. Either way the
-scan is done once: it lists each recovered authorization
+scan is done once: it lists each recovered granted authorization
 with the participant's activity, flags numbers with more than one
 participant, and writes everything to `OUTPUT`. From that file,
 `report_phone_spellings` (`INPUT=audit.json`) prints the report again and
