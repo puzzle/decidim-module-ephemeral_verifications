@@ -30,4 +30,5 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "decidim-core", *Decidim::EphemeralVerifications::DECIDIM_VERSION
   spec.add_dependency "decidim-verifications", *Decidim::EphemeralVerifications::DECIDIM_VERSION
+  spec.add_dependency "phonelib", "~> 0.10"
 end

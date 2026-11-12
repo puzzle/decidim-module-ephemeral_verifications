@@ -110,6 +110,75 @@ module Decidim
           end
         end
 
+        describe "normalisation" do
+          around do |example|
+            previous = Sms.default_country
+            Sms.default_country = "CH"
+            example.run
+          ensure
+            Sms.default_country = previous
+          end
+
+          let(:spellings) { ["079 123 45 67", "+41 79 123 45 67", "0041 79 123 45 67", "+41 (0)79 123 45 67"] }
+
+          def form_for(spelling)
+            described_class.from_params(attributes.merge(mobile_phone_number: spelling, user:))
+          end
+
+          # The bug report: one phone, three verifications, three votes.
+          it "derives the same unique_id whichever way the number is spelled" do
+            expect(spellings.map { |spelling| form_for(spelling).unique_id }.uniq).to eq([form.unique_id])
+          end
+
+          # Guards the formula `PhoneNumber.digest` replicates from upstream.
+          it "keys the authorization by the hash of the E.164 spelling" do
+            expect(form.unique_id).to eq(PhoneNumber.digest("+41791234567"))
+          end
+
+          it "hands the gateway the E.164 spelling" do
+            expect(form_for("079 123 45 67")).to be_valid
+
+            expect(Decidim::Verifications::Sms::ExampleGateway).to have_received(:new).with("+41791234567", anything, anything)
+          end
+
+          context "with a landline" do
+            let(:mobile_phone_number) { "+41 44 123 45 67" }
+
+            it { is_expected.not_to be_valid }
+
+            it "explains it on the field and does not send an SMS" do
+              expect(Decidim::Verifications::Sms::ExampleGateway).not_to receive(:new)
+
+              form.valid?
+
+              expect(form.errors[:mobile_phone_number]).not_to be_empty
+            end
+          end
+
+          context "with something that is not a number" do
+            let(:mobile_phone_number) { "+41 79 12" }
+
+            it { is_expected.not_to be_valid }
+          end
+
+          context "without a default country" do
+            around do |example|
+              Sms.default_country = nil
+              example.run
+            end
+
+            it "still accepts an international spelling" do
+              expect(form_for("+41 79 123 45 67")).to be_valid
+            end
+
+            it "refuses a national one rather than guessing" do
+              expect(Decidim::Verifications::Sms::ExampleGateway).not_to receive(:new)
+
+              expect(form_for("079 123 45 67")).not_to be_valid
+            end
+          end
+        end
+
         describe "a blank phone number" do
           let(:mobile_phone_number) { "" }
 

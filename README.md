@@ -66,6 +66,20 @@ There are no migrations. Then, as an administrator:
 > `sms` handler alongside it would force them through two separate SMS
 > verifications while guests only ever see this one.
 
+Phone numbers are normalised to E.164 before they are hashed and handed to
+the gateway, so every spelling of a number is the same participant. Out of
+the box that means participants have to include the country code
+(`+41 79 123 45 67`). To accept national spellings (`079 123 45 67`) as
+well, tell the workflow which country they belong to, in an initializer of
+the host application:
+
+```ruby
+# config/initializers/decidim_ephemeral_verifications.rb
+Decidim::EphemeralVerifications::Sms.default_country = "CH"
+```
+
+An application that already sets `Phonelib.default_country` needs nothing.
+
 > **Changing a component's permissions revokes verifications.** Decidim
 > deliberately revokes every granted authorization of an ephemeral workflow
 > across the whole organization whenever that workflow is added to a

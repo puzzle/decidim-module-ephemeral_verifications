@@ -14,6 +14,19 @@ module Decidim
       # unsaveable, because `Decidim::Authorization` validates that a workflow
       # of that name is registered.
       WORKFLOW_NAME = "ephemeral_sms"
+
+      # The country a phone number typed without a country code belongs to, as
+      # an ISO 3166-1 alpha-2 code ("CH"). Set it from a host application
+      # initializer:
+      #
+      #   Decidim::EphemeralVerifications::Sms.default_country = "CH"
+      #
+      # Optional. Left unset, phonelib's own `default_country` applies, and
+      # without that too only international spellings ("+41 79 ...") are
+      # accepted — the safe default for a gem that knows nothing about the
+      # installation. It is read per request, so the order in which
+      # initializers run does not matter.
+      mattr_accessor :default_country, default: nil
     end
   end
 end
