@@ -16,3 +16,38 @@ namespace :decidim do
     end
   end
 end
+
+namespace :decidim do
+  namespace :ephemeral_verifications do
+    namespace :sms do
+      desc "Scans a mobile numbering range for ephemeral_sms authorizations keyed by a legacy phone number spelling, " \
+           "and writes the matches to OUTPUT. COUNTRY=CH PREFIXES=76,77,78,79 DIGITS=7 OUTPUT=audit.json [PROCESSES=4] [REVEAL=1]"
+      task audit_phone_spellings: :environment do
+        require "decidim/ephemeral_verifications/sms/spelling_audit"
+
+        Decidim::EphemeralVerifications::Sms::SpellingAudit.new(
+          country: ENV.fetch("COUNTRY"),
+          prefixes: ENV.fetch("PREFIXES").split(","),
+          digits: ENV.fetch("DIGITS"),
+          processes: ENV.fetch("PROCESSES", 1),
+          reveal: ENV["REVEAL"].present?
+        ).run.save(ENV.fetch("OUTPUT"))
+      end
+
+      desc "Prints the report of an earlier scan again. INPUT=audit.json [REVEAL=1]"
+      task report_phone_spellings: :environment do
+        require "decidim/ephemeral_verifications/sms/spelling_audit"
+
+        Decidim::EphemeralVerifications::Sms::SpellingAudit.load(ENV.fetch("INPUT"), reveal: ENV["REVEAL"].present?).report
+      end
+
+      desc "Rekeys the legacy records of an earlier scan to the canonical spelling, all of them or only IDS. INPUT=audit.json [IDS=12,57]"
+      task rekey_phone_spellings: :environment do
+        require "decidim/ephemeral_verifications/sms/spelling_audit"
+
+        ids = ENV["IDS"].presence&.split(",")&.map { |id| Integer(id.strip) }
+        Decidim::EphemeralVerifications::Sms::SpellingAudit.load(ENV.fetch("INPUT")).rewrite!(ids)
+      end
+    end
+  end
+end

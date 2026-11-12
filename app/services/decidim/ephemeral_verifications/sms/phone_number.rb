@@ -33,6 +33,22 @@ module Decidim
           Digest::SHA256.hexdigest("#{spelling}-#{Rails.application.secret_key_base}")
         end
 
+        # Every string that core's sanitisation (digits and `+` only) could have
+        # produced for one number, canonical E.164 spelling first:
+        #
+        #   +41791234567   0791234567   791234567   0041791234567
+        #   41791234567    +410791234567 00410791234567 410791234567
+        #
+        # The trunk-prefixed international forms come from "+41 (0)79 ...",
+        # whose parentheses the sanitisation dropped. Pure string arithmetic,
+        # so the audit task can enumerate a whole numbering range with it.
+        def self.spellings(country_code:, national_number:, trunk_prefix: nil, international_prefix: "00")
+          national = ["#{trunk_prefix}#{national_number}", national_number.to_s]
+          international = ["+#{country_code}", "#{international_prefix}#{country_code}", "00#{country_code}", country_code.to_s]
+
+          (["+#{country_code}#{national_number}"] + national + international.product(national).map(&:join)).uniq
+        end
+
         attr_reader :parsed
 
         def initialize(parsed)

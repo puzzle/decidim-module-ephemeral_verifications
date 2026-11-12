@@ -57,6 +57,27 @@ module Decidim
             Phonelib.default_country = nil
           end
         end
+
+        describe ".spellings" do
+          it "lists what core's sanitisation could have made of a Swiss number, canonical first" do
+            expect(described_class.spellings(country_code: "41", national_number: "791234567", trunk_prefix: "0", international_prefix: "00")).to eq(
+              %w(+41791234567 0791234567 791234567 +410791234567 +41791234567 00410791234567 0041791234567 410791234567 41791234567).uniq
+            )
+          end
+
+          it "covers both the plan's international prefix and 00" do
+            spellings = described_class.spellings(country_code: "1", national_number: "2025550123", trunk_prefix: "1", international_prefix: "011")
+
+            expect(spellings).to include("01112025550123", "0012025550123", "12025550123")
+          end
+
+          it "copes with a plan that has no trunk prefix" do
+            spellings = described_class.spellings(country_code: "39", national_number: "3331234567", trunk_prefix: nil, international_prefix: "00")
+
+            expect(spellings).to include("3331234567", "00393331234567")
+            expect(spellings).to all(match(/\A[+0-9]+\z/))
+          end
+        end
       end
     end
   end

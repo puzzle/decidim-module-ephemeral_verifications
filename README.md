@@ -101,6 +101,30 @@ It ships as a generic "I confirm that I am eligible to take part." Checkbox
 labels are rendered as HTML by Decidim's form builder, so the replacement may
 contain a link.
 
+## Upgrading from a version without phone number normalisation
+
+Earlier revisions hashed the number as typed, so one person could be verified
+once per spelling, and an authorization keyed by a national or `00` spelling
+is not recognised until it is rekeyed. To find those, and the participants who
+already verified twice, enumerate the mobile numbering range and look up every
+spelling's hash:
+
+```bash
+COUNTRY=CH PREFIXES=76,77,78,79 DIGITS=7 PROCESSES=4 OUTPUT=audit.json \
+  bundle exec rake decidim:ephemeral_verifications:sms:audit_phone_spellings
+```
+
+`PREFIXES` are the leading digits of the national numbers without the trunk
+`0`, `DIGITS` how many follow. The scan takes a quarter of an hour per core
+for Swiss mobiles and is done once: it lists each recovered authorization
+with the participant's activity, flags numbers with more than one
+participant, and writes everything to `OUTPUT`. From that file,
+`report_phone_spellings` (`INPUT=audit.json`) prints the report again and
+`rekey_phone_spellings` (`INPUT=audit.json`, optionally `IDS=12,57`) rekeys
+the legacy records, all of them or the ones you pick. Nothing is deleted.
+`REVEAL=1` unmasks the numbers in the report; the file always holds them in
+clear, so keep it on the server and delete it when done.
+
 ## Development
 
 ### Preparation
