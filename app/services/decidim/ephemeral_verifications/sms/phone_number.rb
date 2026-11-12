@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "phonelib"
-
 module Decidim
   module EphemeralVerifications
     module Sms
