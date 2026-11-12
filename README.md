@@ -116,7 +116,10 @@ COUNTRY=CH PREFIXES=76,77,78,79 DIGITS=7 PROCESSES=4 OUTPUT=audit.json \
 
 `PREFIXES` are the leading digits of the national numbers without the trunk
 `0`, `DIGITS` how many follow. The scan takes a quarter of an hour per core
-for Swiss mobiles and is done once: it lists each recovered authorization
+for Swiss mobiles. If the SMS gateway can export the numbers it delivered
+to, `NUMBERS=sent.json` (a JSON file; every string in it that is a phone
+number counts) checks just those instead and takes seconds. Either way the
+scan is done once: it lists each recovered authorization
 with the participant's activity, flags numbers with more than one
 participant, and writes everything to `OUTPUT`. From that file,
 `report_phone_spellings` (`INPUT=audit.json`) prints the report again and
