@@ -22,6 +22,8 @@ en:
         name: SMS verification without an account
     ephemeral_verifications:
       sms:
+        mobile_phone:
+          not_a_mobile_number: does not look like a mobile phone number. Please include the country code, e.g. +41 79 123 45 67.
         authorizations:
           create:
             error: There was a problem with your request.

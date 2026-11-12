@@ -11,7 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  RUBY_VERSION: 3.3.4
+  # The series only: ubuntu-latest keeps just the newest 3.3.x patch release.
+  RUBY_VERSION: "3.3"
   # Decidim 0.31's package.json declares "node": ">=22.14.0".
   NODE_VERSION: 22.14.0
 

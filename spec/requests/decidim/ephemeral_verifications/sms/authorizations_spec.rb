@@ -348,6 +348,39 @@ describe "Ephemeral SMS authorizations" do
     end
   end
 
+  describe "a national spelling" do
+    let(:phone) { "079 123 45 67" }
+
+    around do |example|
+      previous = Decidim::EphemeralVerifications::Sms.default_country
+      Decidim::EphemeralVerifications::Sms.default_country = default_country
+      example.run
+    ensure
+      Decidim::EphemeralVerifications::Sms.default_country = previous
+    end
+
+    context "with a default country configured" do
+      let(:default_country) { "CH" }
+
+      it "is keyed exactly like the international spelling" do
+        request_code
+
+        expect(authorization.unique_id).to eq(Decidim::EphemeralVerifications::Sms::PhoneNumber.digest("+41791234567"))
+      end
+    end
+
+    context "without one" do
+      let(:default_country) { nil }
+
+      it "is refused on the form, with nothing stored and nothing sent" do
+        expect { request_code }.not_to change(Decidim::Authorization, :count)
+
+        expect(response).to have_http_status(:unprocessable_entity)
+        expect(response.body).to include("does not look like a mobile phone number")
+      end
+    end
+  end
+
   describe "a registered participant verifying a phone number used ephemerally" do
     let(:user) { create(:user, :confirmed, organization:) }
     let(:earlier_user) { create(:user, :ephemeral, :confirmed, organization:) }

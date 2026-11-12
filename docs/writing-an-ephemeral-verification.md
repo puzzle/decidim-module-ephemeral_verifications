@@ -134,8 +134,10 @@ demodulised and underscored.
 earlier ephemeral session or transfer an authorization to a new account.
 Returning `nil` (the default) skips the uniqueness check altogether, so none of
 that happens — the workflow just grants a fresh authorization every time.
-Derive it from the identity being proven, and **hash it**: `unique_id` is the
-one identity column that is *not* encrypted at rest.
+Derive it from the identity being proven, **normalise it** (a hash recognises
+only identical spellings, and once records exist the derivation cannot change)
+and **hash it**: `unique_id` is the one identity column that is *not* encrypted
+at rest.
 
 **`metadata`** is what survives granting — the attributes an admin can gate on
 (step 4) and an administrator can later inspect. By convention, anything not
@@ -531,10 +533,10 @@ only if a documented assumption depends on it. In this module that guard is
 2. Register from a Rails engine `initializer`.
 3. Set `ephemeral = true`, and `renewable = false` unless re-verifying is both
    wanted and harmless.
-4. Write the handler: `handler_name` equal to the workflow name, a stable and
-   hashed `unique_id`, and `metadata` keys named after the options an admin may
-   gate the action on — or a custom action authorizer, if the comparison is not
-   an equality.
+4. Write the handler: `handler_name` equal to the workflow name, a stable,
+   normalised and hashed `unique_id`, and `metadata` keys named after the
+   options an admin may gate the action on — or a custom action authorizer, if
+   the comparison is not an equality.
 5. Multistep: declare `edit_authorization_path` (and, if renewable,
    `renew_authorization_path` plus the `Renewable` concern in the controller),
    and keep every route under the engine's mount point.

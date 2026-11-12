@@ -20,6 +20,8 @@ de:
         name: SMS-Verifizierung ohne Konto
     ephemeral_verifications:
       sms:
+        mobile_phone:
+          not_a_mobile_number: scheint keine Mobiltelefonnummer zu sein. Bitte geben Sie auch die Landesvorwahl an, z.B. +41 79 123 45 67.
         authorizations:
           create:
             error: Bei Ihrer Anfrage ist ein Problem aufgetreten.

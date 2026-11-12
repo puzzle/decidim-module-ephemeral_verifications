@@ -35,6 +35,7 @@ bundle exec rspec path/to/spec.rb:12 # a single example
 bundle exec rubocop -a
 bundle exec rake development_app     # a real app to click through
 bundle exec rake overrides:checksums # accept upstream changes to copied files
+COUNTRY=CH PREFIXES=76,77,78,79 DIGITS=7 OUTPUT=audit.json bundle exec rake decidim:ephemeral_verifications:sms:audit_phone_spellings # see README, Upgrading
 docker compose down                  # once you are done, stop Postgres (add -v to discard the data)
 ```
 
@@ -57,9 +58,10 @@ The flow is two steps, both in
 `app/controllers/.../sms/authorizations_controller.rb`:
 
 1. `new`/`create` — `MobilePhoneForm` (inherits the core SMS form, so code
-   generation and the gateway call stay upstream's problem) takes a phone
-   number, a required eligibility confirmation, and the terms of service. The
-   SMS is sent *during validation*.
+   generation, hashing and the gateway call stay upstream's problem) takes a
+   phone number, a required eligibility confirmation, and the terms of
+   service. `PhoneNumber` normalises the number to E.164 before upstream hashes
+   it. The SMS is sent *during validation*.
 2. `edit`/`update` — `ConfirmationForm` carries the code; it is checked against `CODE_VALID_FOR` and
    `MAX_ATTEMPTS` **on the record** first, then the core
    `ConfirmUserAuthorization` compares it and grants, then `resolve_duplicates`
@@ -74,7 +76,7 @@ stores.
 `workflow.renewable = false` for a related reason; see steps 2 and 9 of
 `docs/writing-an-ephemeral-verification.md`.
 
-### Five things that will bite you
+### Six things that will bite you
 
 These are not stylistic; each one was a bug found by running the code.
 
@@ -100,6 +102,10 @@ destroys ours first when a duplicate exists.
 authorization exists, so a second tab, a reload or a bookmarked URL would raise
 `ActionForbidden`, bounce to the root, and be sent straight back by the session
 checker. `new` redirects to the resume path instead.
+
+**Normalise the identity before hashing it.** Two spellings of one phone
+number were two `unique_id`s, two ephemeral users and two votes. And since the
+hash is one-way, changing what goes into it strands every existing record.
 
 **`onboarding.authorization_path` must be set and then cleared.** Setting it is
 what makes step two reachable at all (once an ungranted authorization exists the
