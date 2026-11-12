@@ -67,6 +67,33 @@ module Decidim
           expect(with_zeros.reload.unique_id).to eq(PhoneNumber.digest("0041791234567"))
         end
 
+        context "with the gateway's list of recipients instead of a range" do
+          subject(:audit) { described_class.new(country: "CH", numbers:, output:) }
+
+          # Spelled the way a gateway logs them, plus the noise a log carries.
+          let(:numbers) { ["41791234567", "+41791234599", "0041761234567", "+41791234500", "2026-10-03 12:34:56", "41791234567"] }
+
+          it "finds the records of the listed numbers only, whatever their spelling" do
+            expect(audit.matches.map(&:authorization_id)).to contain_exactly(national.id, international.id, with_zeros.id, other_number.id, canonical.id, outside_range.id)
+            expect(audit.collisions.keys).to eq(["+41791234567"])
+            expect(output.string).to include("checking 4 listed numbers (2 entries skipped)")
+          end
+
+          it "round-trips through a file like a range scan" do
+            path = File.join(Dir.mktmpdir, "audit.json")
+            audit.save(path)
+
+            expect(described_class.load(path, output:).legacy_matches).to match_array(audit.legacy_matches)
+          end
+
+          it "takes the numbers out of whatever the log file is shaped like" do
+            path = File.join(Dir.mktmpdir, "sent.json")
+            File.write(path, JSON.generate([{ "to" => "41791234567", "sent_at" => "2026-10-03T12:34:56Z" }, "0041791234599"]))
+
+            expect(described_class.strings_in(path)).to eq(["41791234567", "2026-10-03T12:34:56Z", "0041791234599"])
+          end
+        end
+
         context "when forking" do
           subject(:audit) { described_class.new(country: "CH", prefixes: %w(7912345), digits: 2, processes: 3, output:) }
 

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "json"
+require "phonelib"
 
 module Decidim
   module EphemeralVerifications
@@ -15,7 +16,10 @@ module Decidim
       # range is small enough for that to take minutes (Switzerland: four
       # prefixes of seven digits, about forty million numbers, each in nine
       # spellings), but not seconds, so the scan is done once and `save`d, and
-      # the report and the rekeying work from that file (`load`).
+      # the report and the rekeying work from that file (`load`). When the SMS
+      # gateway's log of recipients is at hand, `numbers:` scans those instead
+      # of the range, which takes seconds and also finds numbers the range
+      # would have missed.
       #
       # It needs the production secret key base and, by construction, ends up
       # knowing which number each record belongs to. Numbers are masked in the
@@ -26,17 +30,22 @@ module Decidim
       class SpellingAudit
         Match = Struct.new(:canonical, :spelling, :authorization_id, keyword_init: true)
 
-        attr_reader :country, :prefixes, :digits, :processes, :output, :reveal
+        attr_reader :country, :prefixes, :digits, :numbers, :processes, :output, :reveal
         attr_accessor :matches
 
-        # country  - ISO 3166-1 alpha-2 code of the numbering plan ("CH").
+        # country  - ISO 3166-1 alpha-2 code of the numbering plan ("CH"), and
+        #            the country a listed number without one belongs to.
         # prefixes - leading digits of the national significant numbers to
         #            scan, without the trunk prefix (%w(76 77 78 79)).
         # digits   - how many digits follow each prefix (7 for Switzerland).
-        def initialize(country:, prefixes:, digits:, processes: 1, output: $stdout, reveal: false) # rubocop:disable Metrics/ParameterLists
+        # numbers  - instead of a range, the numbers to check, in any spelling;
+        #            entries that are not a phone number are skipped.
+        def initialize(country:, prefixes: nil, digits: nil, numbers: nil, processes: 1, output: $stdout, reveal: false) # rubocop:disable Metrics/ParameterLists
           @country = country.to_s.upcase
           @prefixes = Array(prefixes).map { |prefix| prefix.to_s.gsub(/\D/, "") }
-          @digits = Integer(digits)
+          @digits = digits && Integer(digits)
+          @numbers = numbers && numbers.map { |raw| Phonelib.parse(raw.to_s, @country) }.select(&:valid?).uniq(&:e164)
+          @skipped = numbers ? numbers.size - @numbers.size : 0
           @processes = [Integer(processes), 1].max
           @output = output
           @reveal = reveal
@@ -47,14 +56,31 @@ module Decidim
         # rekeying do not repeat the scan.
         def self.load(path, output: $stdout, reveal: false)
           data = JSON.parse(File.read(path))
-          audit = new(country: data.fetch("country"), prefixes: data.fetch("prefixes"), digits: data.fetch("digits"), output:, reveal:)
+          audit = new(country: data.fetch("country"), prefixes: data["prefixes"], digits: data["digits"], numbers: data["numbers"], output:, reveal:)
           audit.matches = data.fetch("matches").map { |match| Match.new(**match.symbolize_keys) }
           audit
         end
 
+        # Every string in a JSON file, whatever its structure: a gateway log
+        # is as likely to be a list of objects as a list of numbers.
+        def self.strings_in(path)
+          strings = []
+          walk = lambda do |node|
+            case node
+            when Hash then node.each_value(&walk)
+            when Array then node.each(&walk)
+            when String then strings << node
+            end
+          end
+          walk.call(JSON.parse(File.read(path)))
+          strings
+        end
+
         def run
+          raise ArgumentError, "give either numbers or prefixes and digits" unless numbers || (prefixes.any? && digits)
+
           @index = Decidim::Authorization.where(name: WORKFLOW_NAME).pluck(:unique_id, :id).group_by(&:first).transform_values { |pairs| pairs.map(&:last) }
-          output.puts "#{@index.values.sum(&:size)} #{WORKFLOW_NAME} authorizations, scanning #{prefixes.size} prefixes of #{digits} digits in #{country}..."
+          output.puts "#{@index.values.sum(&:size)} #{WORKFLOW_NAME} authorizations, #{scope}..."
 
           plan # load the numbering plan once, in the parent, not in every worker
           @matches = scan
@@ -63,7 +89,7 @@ module Decidim
         end
 
         def save(path)
-          File.write(path, JSON.pretty_generate(country:, prefixes:, digits:, scanned_at: Time.current, matches: matches.map(&:to_h)))
+          File.write(path, JSON.pretty_generate(country:, prefixes:, digits:, numbers: numbers&.map(&:e164), scanned_at: Time.current, matches: matches.map(&:to_h)))
           output.puts "Wrote #{matches.size} matches to #{path}. It holds phone numbers next to participant ids: keep it on the server and delete it when done."
         end
 
@@ -141,26 +167,48 @@ module Decidim
           end
         end
 
+        def scope
+          if numbers
+            "checking #{numbers.size} listed numbers (#{@skipped} entries skipped)"
+          else
+            "scanning #{prefixes.size} prefixes of #{digits} digits in #{country}"
+          end
+        end
+
         def scan_slice(slice)
           found = []
-          space = 10**digits
-          prefixes.each do |prefix|
-            (slice...space).step(processes) do |number|
-              national_number = "#{prefix}#{number.to_s.rjust(digits, "0")}"
-              canonical = "+#{plan[:country_code]}#{national_number}"
-              spellings(national_number).each do |spelling|
-                ids = @index[PhoneNumber.digest(spelling)]
-                next unless ids
+          each_number(slice) do |canonical, national_number, plan|
+            spellings(national_number, plan).each do |spelling|
+              ids = @index[PhoneNumber.digest(spelling)]
+              next unless ids
 
-                ids.each { |id| found << Match.new(canonical:, spelling:, authorization_id: id) }
-              end
+              ids.each { |id| found << Match.new(canonical:, spelling:, authorization_id: id) }
             end
-            output.puts "  prefix #{prefix} done" if processes == 1
           end
           found
         end
 
-        def spellings(national_number)
+        # Yields the canonical spelling, the national significant number and
+        # the numbering plan of every number in this worker's share.
+        def each_number(slice)
+          if numbers
+            numbers.each_with_index do |number, index|
+              yield number.e164, number.national_number, Phonelib.phone_data[number.country] if index % processes == slice
+            end
+            return
+          end
+
+          space = 10**digits
+          prefixes.each do |prefix|
+            (slice...space).step(processes) do |number|
+              national_number = "#{prefix}#{number.to_s.rjust(digits, "0")}"
+              yield "+#{plan[:country_code]}#{national_number}", national_number, plan
+            end
+            output.puts "  prefix #{prefix} done" if processes == 1
+          end
+        end
+
+        def spellings(national_number, plan)
           PhoneNumber.spellings(
             country_code: plan[:country_code],
             national_number:,
