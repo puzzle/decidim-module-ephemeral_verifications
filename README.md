@@ -111,7 +111,7 @@ System specs need Chrome and chromedriver. `selenium-webdriver` bundles
 Selenium Manager, so both can be fetched without root and without touching the
 system package manager:
 ```bash
-SM=$(dirname $(gem which selenium/webdriver))/../bin/linux/selenium-manager
+SM=$(dirname $(gem which selenium/webdriver))/../../bin/linux/selenium-manager
 $SM --browser chrome --browser-version stable --output json
 ```
 
