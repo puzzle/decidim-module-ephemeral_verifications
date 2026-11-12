@@ -22,6 +22,24 @@ module Decidim
           WORKFLOW_NAME
         end
 
+        # Only a granted record of another participant counts, and the oldest
+        # wins. Decidim's lookup takes any other record with this `unique_id`
+        # in whatever order the database returns them, and since step one
+        # tolerates duplicates, abandoned attempts leave pending records of
+        # other ephemeral users around. Adopting one of those leaves the real
+        # voter's granted record unmerged: two granted authorizations, two
+        # users, one phone number. A pending record of another user holds
+        # nothing worth recovering.
+        def duplicate
+          return unless user
+
+          Authorization
+            .where(user: User.where.not(id: user.id).where(organization: user.organization), name: handler_name, unique_id:)
+            .where.not(granted_at: nil)
+            .order(:granted_at)
+            .first
+        end
+
         def self.from_authorization(authorization)
           metadata = authorization.metadata.to_h
           new(

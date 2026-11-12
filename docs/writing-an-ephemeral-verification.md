@@ -367,7 +367,10 @@ because the ephemeral account is soft-deleted after one action but the granted
 authorization survives. A returning participant otherwise collides with their
 *own* earlier proof. Two authorizations transiently sharing a `unique_id` is
 legal (the index is not unique) and unambiguous. Delete the redundant record
-afterwards, or a third visit finds two candidates.
+afterwards, or a third visit finds two candidates — and have the final
+handler's `duplicate` consider granted records only, because abandoned attempts
+leave pending ones behind and `AuthorizationHandler#duplicate` is a bare
+`find_by` that returns whichever comes first.
 
 ```ruby
 handler = TransferHandler.from_authorization(authorization)

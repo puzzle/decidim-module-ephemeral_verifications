@@ -346,6 +346,35 @@ describe "Ephemeral SMS authorizations" do
 
       expect(Decidim::Authorization.where(name: "ephemeral_sms", unique_id: earlier_authorization.unique_id).count).to eq(1)
     end
+
+    context "when someone else also started, and abandoned, a verification of that number" do
+      let(:abandoned_user) { create(:user, :ephemeral, :confirmed, organization:) }
+      let!(:abandoned_authorization) do
+        create(
+          :authorization,
+          :pending,
+          user: abandoned_user,
+          name: "ephemeral_sms",
+          unique_id: earlier_authorization.unique_id,
+          verification_metadata: { "verification_code" => "000000", "code_sent_at" => 1.day.ago }
+        )
+      end
+
+      # Decidim's `find_by` returns the row that comes first on disk, and a
+      # row is rewritten whenever it is updated. In production the voter's
+      # record was granted, so it usually sits behind every attempt that was
+      # started before the grant; this update puts it there.
+      before { earlier_authorization.update!(metadata: earlier_authorization.metadata.merge("touched" => true)) }
+
+      it "merges with the voter's granted record, not the abandoned pending one" do
+        request_code
+        put collection_path, params: { confirmation: { verification_code: sent_code } }
+
+        granted = Decidim::Authorization.where(name: "ephemeral_sms", unique_id: earlier_authorization.unique_id).where.not(granted_at: nil)
+        expect(granted).to contain_exactly(earlier_authorization)
+        expect(abandoned_authorization.reload).not_to be_granted
+      end
+    end
   end
 
   describe "a national spelling" do
