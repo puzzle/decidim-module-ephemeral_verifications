@@ -1,8 +1,7 @@
 <%#
   Adapted from decidim/verifications/sms/authorizations/edit.html.erb. The
   reset link uses Turbo attributes rather than upstream's `method: :delete`,
-  which no longer does anything now that Decidim ships Turbo instead of
-  rails-ujs.
+  which needs rails-ujs; Decidim ships Turbo, so it does nothing.
 %>
 <div class="text-center py-10">
   <h1 class="title-decorator inline-block text-left">

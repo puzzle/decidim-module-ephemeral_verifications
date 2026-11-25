@@ -126,10 +126,10 @@ describe "Ephemeral SMS authorizations" do
       expect(user.reload.accepted_tos_version).to be_within(1.second).of(organization.tos_version)
     end
 
-    # The earlier version of this module deadlocked here: the stored
-    # authorization_path kept pointing at this engine, but neither of its steps
-    # is permitted once the authorization is granted, so every request was
-    # bounced here, forbidden, sent to the root, and bounced here again.
+    # Regression guard: unless the stored authorization_path is cleared, it
+    # keeps pointing at this engine, but neither of its steps is permitted once
+    # the authorization is granted, so every request is bounced here,
+    # forbidden, sent to the root, and bounced here again.
     it "settles on a real page instead of looping after verification" do
       put collection_path, params: { confirmation: { verification_code: sent_code } }
 
@@ -156,12 +156,12 @@ describe "Ephemeral SMS authorizations" do
     end
   end
 
-  describe "the limits this module enforces itself" do
+  describe "the limits on a code" do
     before { request_code }
 
-    # Upstream counts failures in session[:failed_attempts] under a cookie
-    # session store, so a replayed cookie resets it, and it never checks
-    # code_sent_at. Both have to hold on the record instead.
+    # Decidim decides how long a code lives and how many guesses it gets. A
+    # spent code is killed, so the participant has to request a fresh one
+    # instead of waiting out a lock.
     it "gives up on the code after repeated wrong guesses" do
       code = sent_code
 
@@ -192,6 +192,48 @@ describe "Ephemeral SMS authorizations" do
       end
 
       expect(authorization.reload).to be_granted
+    end
+
+    it "takes the number of guesses from Decidim's configuration" do
+      allow(Decidim).to receive(:verification_max_failed_attempts).and_return(2)
+
+      put collection_path, params: { confirmation: { verification_code: "000000" } }
+      expect(Decidim::Authorization.where(name: "ephemeral_sms", user:)).not_to be_empty
+
+      put collection_path, params: { confirmation: { verification_code: "000000" } }
+      expect(Decidim::Authorization.where(name: "ephemeral_sms", user:)).to be_empty
+    end
+
+    it "takes the code lifetime from Decidim's configuration" do
+      allow(Decidim).to receive(:verification_code_expiry_minutes).and_return(2)
+
+      code = sent_code
+      travel_to(3.minutes.from_now) do
+        put collection_path, params: { confirmation: { verification_code: code } }
+      end
+
+      expect(Decidim::Authorization.where(name: "ephemeral_sms", user:)).to be_empty
+    end
+
+    it "kills the code at the cap even when Decidim's lock lasts no time" do
+      allow(Decidim).to receive(:verification_unlock_in).and_return(0.seconds)
+
+      Decidim.verification_max_failed_attempts.times do
+        put collection_path, params: { confirmation: { verification_code: "000000" } }
+      end
+
+      expect(Decidim::Authorization.where(name: "ephemeral_sms", user:)).to be_empty
+    end
+
+    # Two requests racing past the cap: the loser finds the record locked.
+    it "refuses even the right code on a locked record" do
+      code = sent_code
+      authorization.update!(failed_attempts: Decidim.verification_max_failed_attempts, locked_at: Time.current)
+
+      put collection_path, params: { confirmation: { verification_code: code } }
+
+      expect(Decidim::Authorization.where(name: "ephemeral_sms", user:)).to be_empty
+      expect(response).to have_http_status(:redirect)
     end
 
     # Every resend is real money and a message to a third party. The reset link
@@ -345,6 +387,32 @@ describe "Ephemeral SMS authorizations" do
       put collection_path, params: { confirmation: { verification_code: sent_code } }
 
       expect(Decidim::Authorization.where(name: "ephemeral_sms", unique_id: earlier_authorization.unique_id).count).to eq(1)
+    end
+
+    # The earlier session's onboarding data names whatever they did then,
+    # e.g. a survey they already answered.
+    it "resumes the action of this session, not the earlier one's" do
+      stale_component = create(:proposal_component, participatory_space:)
+      # Merged: `ephemeral?` is itself a key of extended_data.
+      earlier_user.update(
+        extended_data: earlier_user.extended_data.merge(
+          "onboarding" => {
+            "action" => "vote",
+            "permissions_holder" => stale_component.to_gid.to_s,
+            "redirect_path" => Decidim::EngineRouter.main_proxy(stale_component).root_path
+          }
+        )
+      )
+
+      request_code
+      put collection_path, params: { confirmation: { verification_code: sent_code } }
+
+      onboarding = earlier_user.reload.extended_data["onboarding"]
+      expect(onboarding).to include(
+        "action" => "create",
+        "permissions_holder" => component.to_gid.to_s
+      )
+      expect(onboarding).not_to have_key("authorization_path")
     end
 
     context "when someone else also started, and abandoned, a verification of that number" do

@@ -11,7 +11,7 @@ require_relative "#{base_path}database_defaults"
 
 # The point release the test suite runs against. The gem itself declares the
 # wider DECIDIM_VERSION range.
-DECIDIM_VERSION = "0.31.6"
+DECIDIM_VERSION = "0.31.9"
 
 gem "decidim", DECIDIM_VERSION
 gem "decidim-ephemeral_verifications", path: base_path.empty? ? "." : base_path

@@ -1,6 +1,6 @@
 # How ephemeral verifications work in Decidim
 
-Decidim 0.31 lets a participant verify themselves and complete one action
+Decidim lets a participant verify themselves and complete one action
 without registering. The [decidim documentation][docs] describes the feature as
 if it could be switched on in the system panel; it cannot. Decidim ships the
 machinery and no concrete verification method, so every installation that wants
@@ -9,7 +9,8 @@ this has to supply one in code.
 This document describes what Decidim does, conceptually. To build a workflow of
 your own, read
 [writing-an-ephemeral-verification.md](writing-an-ephemeral-verification.md)
-afterwards. Both are verifiable against Decidim 0.31.
+afterwards. Both are verifiable against the Decidim version this module
+supports.
 
 [docs]: https://docs.decidim.org/en/v0.31/admin/participants/authorizations/ephemeral_verifications#_configuration
 

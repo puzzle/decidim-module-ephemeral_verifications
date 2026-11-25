@@ -4,8 +4,8 @@ Lets participants verify themselves and complete a single action — voting in a
 participatory budget, supporting a proposal, answering a survey — **without
 creating an account**.
 
-Decidim 0.31 introduced the machinery for this ("ephemeral verifications"), but
-it ships no concrete verification method: the
+Decidim ships the machinery for this ("ephemeral verifications"), but no
+concrete verification method: the
 [decidim documentation](https://docs.decidim.org/en/v0.31/admin/participants/authorizations/ephemeral_verifications#_configuration)
 implies the feature can be switched on in the system panel, and it cannot. Every
 installation has to supply a workflow in code. This module supplies one, based
@@ -35,7 +35,7 @@ It also handles what Decidim's multistep verification path leaves out:
 
 ## What you need to bring yourself
 
-- Decidim `>= 0.31.0, < 0.32`
+- Decidim `>= 0.31.9, < 0.32`
 - An SMS gateway configured as `Decidim.sms_gateway_service`. Any class matching
   Decidim's gateway contract works — `new(phone_number, code, context)` plus
   `#deliver_code` — so this module carries no gateway of its own. See

@@ -9,7 +9,7 @@ A Decidim module registering one verification workflow, **`ephemeral_sms`**,
 which lets a participant verify by SMS and complete a single action without
 creating an account.
 
-Decidim 0.31 ships the ephemeral *machinery* but no concrete verification
+Decidim ships the ephemeral *machinery* but no concrete verification
 method — the admin documentation implies it is a system-panel toggle, and it is
 not. Everything interesting about this module is in how it fits around Decidim's
 undocumented behaviour, which is written up in two documents:
@@ -62,23 +62,23 @@ The flow is two steps, both in
    phone number, a required eligibility confirmation, and the terms of
    service. `PhoneNumber` normalises the number to E.164 before upstream hashes
    it. The SMS is sent *during validation*.
-2. `edit`/`update` — `ConfirmationForm` carries the code; it is checked against `CODE_VALID_FOR` and
-   `MAX_ATTEMPTS` **on the record** first, then the core
-   `ConfirmUserAuthorization` compares it and grants, then `resolve_duplicates`
+2. `edit`/`update` — `ConfirmationForm` carries the code; the core
+   `ConfirmUserAuthorization` checks its age and the number of wrong guesses,
+   compares it and grants, then `resolve_duplicates`
    runs `Decidim::Verifications::AuthorizeUser` with `TransferHandler`.
 
-The three limits (`CODE_VALID_FOR`, `MAX_ATTEMPTS`, `RESEND_COOLDOWN`) are
-enforced here rather than delegated upstream, because Decidim counts failures in
-`session[:failed_attempts]`, which the client can reset by dropping the session
-— and outright holds, since `decidim_core.session_store` configures a **cookie**
-store unless the host app sets one — and never reads the `code_sent_at` it
-stores.
-`workflow.renewable = false` for a related reason; see steps 2 and 9 of
+When the command reports the code expired or the record locked
+(`Decidim.verification_code_expiry_minutes`,
+`Decidim.verification_max_failed_attempts`), the controller destroys the
+record: Decidim's lock keeps the code, and it cannot hold for an ephemeral
+user, who gets a new record with every new session. `RESEND_COOLDOWN` limits
+how often a code is sent. `workflow.renewable = false`, because renewing would
+free the phone number for a second vote; see steps 2 and 9 of
 `docs/writing-an-ephemeral-verification.md`.
 
 ### Six things that will bite you
 
-These are not stylistic; each one was a bug found by running the code.
+These are not stylistic: ignoring any one of them breaks the flow.
 
 **`AuthorizeUser` is not in the multistep path.** It is what implements every
 ephemeral behaviour — session recovery, ephemeral-to-account transfer, terms of
@@ -173,7 +173,7 @@ replaces the I18n backend and so reaches every key without touching a template.
 regressions belong. `spec/system` drives the real funnel per component and is
 slow.
 
-Recurring traps, all of which have produced false passes or false failures here:
+Recurring traps, each of which produces false passes or false failures:
 
 - **The `:ephemeral` factory trait does not model a real ephemeral user.**
   `Decidim::CreateEphemeralUser` confirms the user and leaves
@@ -207,7 +207,6 @@ Recurring traps, all of which have produced false passes or false failures here:
   the URL has settled the DOM is stable enough to assert content against. Where
   there is no distinct URL to wait for, anchor on state rather than flash copy
   (`have_no_css("#main-bar [data-close]")`, not a message that may be reworded).
-  This spec failed three different ways before that pattern was applied.
 - **`SEVERE ... 422 (Unprocessable Content)` lines in the output are expected.**
   decidim-dev prints the browser console after every system example
   (`config.after(type: :system) { warn ...logs.get(:browser) }`), and our
@@ -217,6 +216,17 @@ Recurring traps, all of which have produced false passes or false failures here:
   specs do not intend.
 
 ## Conventions
+
+**Docs and comments describe how things work now.** Write them as if this
+module had just been published against the Decidim version it supports: no
+history of this module or of Decidim — not what something used to do, not when
+it changed, no "since 0.x", "before", "no longer", "the earlier version". If a
+statement only makes sense alongside the version that introduced it, leave it
+out. That covers justifications too: a comment explaining why something is
+*not* here, or contrasting the code with what it replaced, only makes sense to
+someone who saw the old version. Version numbers belong only where they
+declare what is supported or tested (`version.rb`, the `Gemfile`, the README's
+requirements, CI); history belongs in commit messages.
 
 The workflow name `ephemeral_sms` is simultaneously the mount path, the
 `decidim_<name>` route proxy, the value in `decidim_authorizations.name` and the

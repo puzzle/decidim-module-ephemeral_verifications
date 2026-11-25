@@ -25,7 +25,7 @@ module Decidim
       # knowing which number each record belongs to. Numbers are masked in the
       # report unless `reveal:` is given; the saved file holds them in clear.
       # Nothing is written to the database unless `rewrite!` is called, which
-      # rekeys legacy records to the canonical id so the flow no longer depends
+      # rekeys legacy records to the canonical id so the flow does not depend
       # on `legacy_unique_ids` to recognise them.
       class SpellingAudit
         Match = Struct.new(:canonical, :spelling, :authorization_id, keyword_init: true)
