@@ -59,11 +59,11 @@ cat "$(bundle show decidim)/.node-version"   # and "engines" in its package.json
 - `.github/workflows/ci.yml` → `RUBY_VERSION` and `NODE_VERSION`
 
 **Also check the image processor.** CI installs ImageMagick because Decidim
-0.31 processes ActiveStorage variants with `mini_magick`, and every component
-view resolves the organization's meta image inline while rendering. Decidim
-0.32 switches to `vips`, so that step becomes
-`apt-get install -y libvips` — read Decidim's own `Gemfile`/CI for the version
-you are moving to rather than assuming.
+processes ActiveStorage variants with `mini_magick`, and every component view
+resolves the organization's meta image inline while rendering. If the version
+you are moving to processes them with `vips` instead, that step becomes
+`apt-get install -y libvips` — read Decidim's own `Gemfile`/CI rather than
+assuming.
 
 ```bash
 bundle update decidim
@@ -90,7 +90,7 @@ A failure names each Decidim file that changed. For each one, diff the new
 upstream version against our adaptation and decide whether the change applies:
 
 ```bash
-git -C /path/to/decidim diff v0.31.6..v0.32.0 -- \
+git -C /path/to/decidim diff v<old>..v<new> -- \
   decidim-verifications/app/controllers/decidim/verifications/sms/authorizations_controller.rb
 ```
 
@@ -140,12 +140,13 @@ Where to read each, under `$(bundle show decidim-verifications)` and
 | 3 | `app/models/decidim/authorization_transfer.rb` plus the unique index on `decidim_authorizations` |
 | 4 | `app/services/decidim/authorization_handler.rb` (`ephemeral_tos_pending?`) |
 
-Two more this module works around rather than depends on. If upstream fixes
-either, delete our workaround rather than carrying it:
+These are gaps this module works around rather than depends on. If upstream
+closes one, delete our workaround rather than carrying it:
 
 | What | Where | Our workaround |
 |---|---|---|
-| Failure counting lives in `session[:failed_attempts]` under a cookie store, and `code_sent_at` is never read | `app/commands/decidim/verifications/confirm_user_authorization.rb`, `app/forms/decidim/verifications/sms/mobile_phone_form.rb` | `CODE_VALID_FOR`, `MAX_ATTEMPTS` and `RESEND_COOLDOWN` enforced on the record in our controller |
+| Decidim's lockout keeps the code and locks the record for `verification_unlock_in`, which cannot hold for an ephemeral user (new session, new record) | `app/commands/decidim/verifications/confirm_user_authorization.rb`, `app/models/decidim/authorization.rb` | The controller destroys the record on `:locked`, `:expired` and on the `:invalid` that sets `locked_at` |
+| No cooldown on re-sending a code | `app/controllers/decidim/verifications/sms/authorizations_controller.rb` (`destroy`) | `RESEND_COOLDOWN` measured against `code_sent_at` in our controller |
 | `workflow.renewable` defaults to true, publishing a destructive GET that can free a phone number for a second vote | `lib/decidim/verifications/workflow_manifest.rb`, `app/controllers/concerns/decidim/verifications/renewable.rb` | `workflow.renewable = false` in our engine |
 
 Also re-check `lib/decidim/verifications/workflow_manifest.rb` for new
@@ -170,28 +171,37 @@ bundle exec rspec
 bundle exec rubocop
 ```
 
-Browser specs are the ones that catch flow-level breakage — the redirect
-deadlock only ever showed up there. If they fail intermittently rather than
+Browser specs are the ones that catch flow-level breakage, such as a redirect
+loop between the two steps. If they fail intermittently rather than
 consistently, suspect a timing race in the spec before suspecting the code, and
 read `AGENTS.md`'s testing notes.
 
 ### 6. Branch, do not break the old version
 
-The ecosystem convention is one branch per Decidim minor. This module has not
-had to do it yet, so the first upgrade establishes it: branch off the current
-Decidim version *before* the bump commit, so installations on the old version
-keep a working ref, rather than widening `DECIDIM_VERSION` to span two minors.
+The ecosystem convention is one branch per Decidim minor: branch off the
+current Decidim version *before* the bump commit, so installations on the old
+version keep a working ref, rather than widening `DECIDIM_VERSION` to span two
+minors.
 
-Several files hardcode the version in prose:
+A few places carry the version:
 
 - `.github/workflows/ci.yml` — the workflow name `[CI] Tests (Decidim 0.xx)`
-- `README.md` — the requirements section, and the opening paragraph's claim
-  about what Decidim does and does not ship
-- `AGENTS.md` — the same claim
-- `docs/how-ephemeral-verifications-work.md` and
-  `docs/writing-an-ephemeral-verification.md` — both state which version they
-  are verifiable against; re-check their assertions, do not just bump the
-  number
+  and the comment on `NODE_VERSION`
+- `README.md` — the requirements section
+- the docs.decidim.org links in `README.md` and
+  `docs/how-ephemeral-verifications-work.md`, which point at the versioned
+  admin documentation
+
+Everything else — the opening claim in `README.md` and `AGENTS.md` about what
+Decidim does and does not ship, and both documents under `docs/` — names no
+version, so re-check its assertions against the new source.
+
+When an upgrade changes how something works, rewrite the affected docs and
+comments to describe the new behaviour as if it had always been so (see
+*Conventions* in `AGENTS.md`). Do not add "since 0.x" or "previously", and do
+not leave comments or specs that only explain why removed code is gone; the
+upgrade's story goes in the commit message. Delete any statement that only
+makes sense with the version that introduced it.
 
 ## Common mistakes
 
@@ -202,5 +212,7 @@ Several files hardcode the version in prose:
 | Widening `DECIDIM_VERSION` to cover two minors | Untested combination; the Gemfile only ever pins one |
 | Trusting green specs as proof the upgrade is complete | Step 4 assumptions are invisible to the suite |
 | Bumping only the gemspec range or only the Gemfile | They serve different purposes and both need changing |
-| Assuming a Ruby or Node version instead of reading Decidim's | Both have been wrong in this repo; the gemspec once advertised a Ruby that Decidim could not install on |
+| Assuming a Ruby or Node version instead of reading Decidim's | The gemspec ends up advertising a Ruby that Decidim cannot install on |
+| Writing "since 0.x", "previously" or "no longer" into docs or comments | Docs turn into a changelog; readers have to reconstruct the current behaviour from its history |
+| Justifying code by what it replaced ("these limits are Decidim's, so only this one is here") | The comment answers a question only someone who saw the old code would ask |
 | Treating a tracked file that vanished upstream as a broken spec | It is drift: the file was renamed or removed. Update `tracked_paths`, then regenerate |

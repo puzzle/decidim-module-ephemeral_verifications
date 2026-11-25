@@ -1,7 +1,7 @@
 # Writing an ephemeral verification for Decidim
 
 The decisions and the code needed to add an ephemeral verification workflow to
-Decidim 0.31. It assumes the machinery described in
+Decidim. It assumes the machinery described in
 [how-ephemeral-verifications-work.md](how-ephemeral-verifications-work.md) —
 read that first; the terms used here are defined there.
 
@@ -339,15 +339,20 @@ service persistence, call the command that already does all three from the
 second step, with a handler built from the record:
 
 ```ruby
-confirmed = false
-Decidim::Verifications::ConfirmUserAuthorization.call(authorization, form, session) do
-  on(:ok) { confirmed = true }
-  on(:already_confirmed) { confirmed = true }
-  on(:invalid) { confirmed = false }
+result = :invalid
+Decidim::Verifications::ConfirmUserAuthorization.call(authorization, form) do
+  on(:ok) { result = :confirmed }
+  on(:already_confirmed) { result = :confirmed }
+  on(:invalid) { result = :invalid }
+  on(:locked) { result = :dead }
+  on(:expired) { result = :dead }
 end
 
-resolve_duplicates if confirmed
+resolve_duplicates if result == :confirmed
 ```
+
+`:locked` and `:expired` are the command's limits on the proof itself; see
+step 9 for what to do with them.
 
 **Only after the proof is confirmed.** What the user submits in the last form
 is the evidence that this participant really holds the identity; resolving
@@ -394,7 +399,11 @@ refusal, and each one leaves the controller something different to do:
   participant, and so is this one: the earlier participant is the same person
   coming back. The command re-grants on that earlier user and yields them, and
   the controller has to sign them in — that yield *is* the session recovery,
-  and nothing recovers if it is ignored.
+  and nothing recovers if it is ignored. Copy the onboarding data of the
+  current user onto the recovered one first: the recovered user carries the
+  action of their earlier session, and onboarding would resume that one instead
+  of what the participant is doing now. Decidim's direct controller does the
+  same.
 - **`:transferred`** — the identity is held by an ephemeral or soft-deleted
   participant while this one is a registered account, so the authorization
   moves here. It yields a `Decidim::AuthorizationTransfer`, whose `records` are
@@ -452,8 +461,8 @@ Have `new` redirect to `resume_authorization_path` when a pending record exists.
 The ephemeral flow removes the account barrier, so everything an account used to
 imply — a confirmed email, an attributable request, a rate limit with a subject
 — stops being true. Assume an unauthenticated visitor attempts the verification
-in a loop. Decidim's only brake is a generic per-IP `Rack::Attack.throttle` of
-100 requests a minute, which is trivially distributed, so whatever the
+in a loop. Apart from its checks on a pending proof (below), Decidim's only
+brake is a generic per-IP `Rack::Attack.throttle` of 100 requests a minute, which is trivially distributed, so whatever the
 verification must not allow in bulk has to be limited by the workflow itself —
 **on the authorization record**, never in the session.
 
@@ -472,14 +481,19 @@ that is an oracle worth rate limiting per identity, not only per IP.
 A multistep flow has two more exposures, because it leaves a record and a
 secret lying around between the steps:
 
-- **The secret can be ground down.** `ConfirmUserAuthorization` counts failures
-  in `session[:failed_attempts]`, and with Decidim's **cookie** session store
-  this makes it client-held outright. Count attempts in `verification_metadata`
-  instead, and destroy the record once the count is exceeded, so that a fresh
+- **The secret can be ground down.** `ConfirmUserAuthorization` counts
+  failures on the record (`failed_attempts`, `locked_at`) and stops comparing
+  once `Decidim.verification_max_failed_attempts` is reached. Its reaction is a
+  lock for `Decidim.verification_unlock_in` that *keeps* the secret, and that
+  lock cannot hold in an ephemeral flow: it sits on the ephemeral user's
+  record, and a new session is a new user. So destroy the record instead — on
+  `:locked`, and on the `:invalid` that sets `locked_at` — so that a fresh
   challenge is required.
-- **The pending record does not expire.** Decidim stores a timestamp alongside
-  the proof but then ignores it. Reject anything older than a few minutes
-  yourself.
+- **The pending record outlives its proof.** The command rejects a proof whose
+  `code_sent_at` is older than `Decidim.verification_code_expiry_minutes` and
+  broadcasts `:expired`, after emptying `verification_metadata` but leaving the
+  record in place. Destroy it there too, or the participant is left with a
+  pending record they cannot confirm.
 
 Also cap the restart path: `destroy` followed by a fresh `create` re-issues the
 challenge, so measure a cooldown, and a ceiling per identity, against the time
@@ -551,8 +565,8 @@ only if a documented assumption depends on it. In this module that guard is
 8. Multistep: set `onboarding.authorization_path` on entry, clear it on every
    exit, and resume instead of refusing when a pending record exists.
 9. Know what one attempt costs, and rate limit per identity rather than per IP.
-   Multistep: expire the pending proof, cap the attempts against it and cool
-   down re-issues, all on the record.
+   Multistep: destroy the pending record when Decidim reports it locked or
+   expired, and cool down re-issues on the record.
 10. Add the i18n keys and the revoke rake task.
 11. Enable it in both places: the system panel's *Available authorizations* and
     the component's action permissions.

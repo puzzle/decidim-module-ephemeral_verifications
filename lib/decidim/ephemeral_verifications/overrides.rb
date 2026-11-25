@@ -39,9 +39,8 @@ module Decidim
       # ones this module copies, and the ones whose behaviour the flow rests on.
       # A checksum cannot verify an assumption still holds — it guarantees that
       # a change to where the assumption lives fails a test instead of passing
-      # silently. Measured against Decidim's history this costs nothing day to
-      # day (none of these changed across any 0.31 patch release) and fires at
-      # minor upgrades, which is when it has to be re-read anyway.
+      # silently. Expect it to fire at minor upgrades, which is when these have
+      # to be re-read anyway, and occasionally at a patch release.
       def self.tracked_paths
         %w(
           decidim-verifications:app/controllers/decidim/verifications/sms/authorizations_controller.rb

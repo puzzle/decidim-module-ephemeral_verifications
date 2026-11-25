@@ -12,11 +12,8 @@ module Decidim
       class AuthorizationsController < Decidim::Verifications::ApplicationController
         I18N_SCOPE = "decidim.ephemeral_verifications.sms"
 
-        # A code is worthless to an attacker who cannot use it before it dies,
-        # and cheap to grind if they can try forever. Both limits are enforced
-        # on the authorization record, not in the session.
-        CODE_VALID_FOR = 10.minutes
-        MAX_ATTEMPTS = 5
+        # The minimum time between two codes for one pending authorization; see
+        # `resend_too_soon?`.
         RESEND_COOLDOWN = 1.minute
 
         include Decidim::HtmlSafeFlash
@@ -82,31 +79,30 @@ module Decidim
 
           @form = confirmation_form
 
-          # Upstream counts failures in `session[:failed_attempts]`, and Decidim
-          # runs the cookie session store, so that counter is held by the client
-          # and a replayed cookie resets it. It also never checks `code_sent_at`.
-          # Both have to be enforced on the record instead.
-          return expire_code! if code_expired? || too_many_attempts?
-
-          # Reuses upstream's code comparison along with its
-          # MAX_FAILED_ATTEMPTS throttling. It grants the authorization, which
-          # is why duplicates are resolved afterwards.
+          # Upstream compares the code, refuses it once it has expired or the
+          # record is locked after too many wrong guesses, and grants the
+          # authorization, which is why duplicates are resolved afterwards.
           #
           # Note the result is captured rather than acted on inside the block:
           # those callbacks run inside the command's own `rescue StandardError`,
           # so anything raised while resolving duplicates would be swallowed and
           # reported to the participant as a wrong code.
-          confirmed = false
-          Decidim::Verifications::ConfirmUserAuthorization.call(authorization, @form, session) do
-            on(:ok) { confirmed = true }
-            on(:already_confirmed) { confirmed = true }
-            on(:invalid) { confirmed = false }
+          result = :invalid
+          Decidim::Verifications::ConfirmUserAuthorization.call(authorization, @form) do
+            on(:ok) { result = :confirmed }
+            on(:already_confirmed) { result = :confirmed }
+            on(:invalid) { result = :invalid }
+            on(:locked) { result = :dead }
+            on(:expired) { result = :dead }
           end
 
-          return resolve_duplicates if confirmed
-
-          # Reaching the attempt cap kills the code and responds itself.
-          return if record_failed_attempt!
+          return resolve_duplicates if result == :confirmed
+          # The wrong guess that reaches the cap comes back as `:invalid` and
+          # leaves the record locked; only a later attempt sees `:locked`.
+          # `locked_at` rather than `locked_for_confirmation?`: with
+          # `Decidim.verification_unlock_in` at zero the lock is already over,
+          # and the next attempt would reset the count on the same code.
+          return expire_code! if result == :dead || authorization.reload.locked_at.present?
 
           flash.now[:alert] = t("authorizations.update.error", scope: I18N_SCOPE)
           render :edit, status: :unprocessable_entity
@@ -129,7 +125,7 @@ module Decidim
         private
 
         def authorization
-          @authorization ||= Decidim::Authorization.find_or_initialize_by(
+          @authorization ||= Decidim::Authorization.find_or_initialize_by( # rubocop:disable Decidim/OrganizationScopedFinder -- user is current_user, scoped to current_organization
             user: current_user,
             name: WORKFLOW_NAME
           )
@@ -157,41 +153,16 @@ module Decidim
           false
         end
 
-        def code_expired?
-          sent_at = authorization.verification_metadata["code_sent_at"]
-          return false if sent_at.blank?
-
-          Time.zone.parse(sent_at.to_s) < CODE_VALID_FOR.ago
-        rescue ArgumentError, TypeError
-          false
-        end
-
-        def failed_attempts
-          authorization.verification_metadata["failed_attempts"].to_i
-        end
-
-        def too_many_attempts?
-          failed_attempts >= MAX_ATTEMPTS
-        end
-
-        # Returns true when the cap was reached, in which case it has already
-        # destroyed the code and issued the response.
-        def record_failed_attempt!
-          attempts = failed_attempts + 1
-
-          if attempts >= MAX_ATTEMPTS
-            expire_code!
-            return true
-          end
-
-          authorization.update!(
-            verification_metadata: authorization.verification_metadata.merge("failed_attempts" => attempts)
-          )
-          false
-        end
-
         # Destroying the record is what makes the limits bite: the participant
         # has to request a fresh code, which is rate limited in turn.
+        #
+        # Decidim's own reaction to the cap is a lock for
+        # `Decidim.verification_unlock_in` that keeps the code. That lock cannot
+        # hold here: it sits on this ephemeral user's record, and a new session
+        # is a new user with a new record. Upstream's resend path destroys a
+        # locked record as well. What does hold is that every code is random
+        # and gets a bounded number of guesses, so a spent code is killed
+        # outright instead of being kept for a later round of guesses.
         def expire_code!
           authorization.destroy!
           forget_authorization_path(current_user)
@@ -315,15 +286,29 @@ module Decidim
           # already gone, dropped in `resolve_duplicates`.
           abandoned = current_user
 
+          # Resume what the participant is doing now, not what they did in the
+          # earlier session (a survey already answered, say), as upstream's
+          # direct controller does.
+          transfer_onboarding_action(abandoned, authorized_user)
           authorized_user.update(last_sign_in_at: Time.current, deleted_at: nil)
-          # The recovered participant carries their own onboarding data from the
-          # earlier session, which may still point here.
+          # The onboarding data just copied, or the recovered participant's own
+          # from the earlier session, may still point here.
           forget_authorization_path(authorized_user)
 
           sign_out(abandoned)
           sign_in(authorized_user)
 
           redirect_to decidim_verifications.onboarding_pending_authorizations_path
+        end
+
+        # Adapted from `Decidim::Verifications::AuthorizationsController#transfer_onboarding_action`.
+        def transfer_onboarding_action(from_user, to_user)
+          pending_action = from_user.extended_data[Decidim::OnboardingManager::DATA_KEY]
+          return if pending_action.blank?
+
+          to_user.update(
+            extended_data: to_user.extended_data.merge(Decidim::OnboardingManager::DATA_KEY => pending_action)
+          )
         end
 
         def transferred_message(transfer)
